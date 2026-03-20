@@ -1,9 +1,9 @@
 export { NormalizedPort, ParsedService, ParsedComposeFile, HostPortBinding } from "./types";
+export { loadComposeFile } from "./parser";
 export {
-  loadComposeFile,
   getServiceNames,
   serviceExists,
   findServicesWithoutImageOrBuild,
   findHostPortBindings,
   findReservedPortConflicts,
-} from "./parser";
+} from "./queries";
