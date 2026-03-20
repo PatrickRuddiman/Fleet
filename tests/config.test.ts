@@ -222,6 +222,30 @@ describe("fleetConfigSchema", () => {
     });
   });
 
+  describe("route service field", () => {
+    it("should parse when service is present", () => {
+      const config = {
+        ...minimalConfig,
+        routes: [{ domain: "example.com", port: 3000, service: "web" }],
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(result.routes[0].service).toBe("web");
+    });
+
+    it("should be undefined when service is absent", () => {
+      const result = fleetConfigSchema.parse(minimalConfig);
+      expect(result.routes[0].service).toBeUndefined();
+    });
+
+    it("should reject non-string service value", () => {
+      const result = fleetConfigSchema.safeParse({
+        ...minimalConfig,
+        routes: [{ domain: "example.com", port: 3000, service: 123 }],
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
   describe("error message content", () => {
     it("should include field path in error for missing server.host", () => {
       const result = fleetConfigSchema.safeParse({
