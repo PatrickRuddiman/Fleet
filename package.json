@@ -1,0 +1,27 @@
+{
+  "name": "fleet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A TypeScript CLI tool for managing deployments",
+  "bin": {
+    "fleet": "bin/fleet"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/cli.ts",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6",
+    "node-ssh": "^13.2.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "ts-node": "^10.9.2",
+    "vitest": "^4.1.0",
+    "@types/node": "^25.5.0"
+  }
+}
