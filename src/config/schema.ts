@@ -25,6 +25,7 @@ export const healthCheckSchema = z.object({
 export const routeSchema = z.object({
   domain: z.string(),
   port: z.number().int(),
+  service: z.string().optional(),
   tls: z.boolean().default(true),
   acme_email: z.string().email().optional(),
   health_check: healthCheckSchema.optional(),
