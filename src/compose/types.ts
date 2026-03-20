@@ -12,3 +12,8 @@ export interface ParsedService {
 export interface ParsedComposeFile {
   services: Record<string, ParsedService>;
 }
+
+export interface HostPortBinding {
+  service: string;
+  hostPort: number;
+}
