@@ -290,4 +290,84 @@ describe("fleetConfigSchema", () => {
       }
     });
   });
+
+  describe("env field union", () => {
+    it("should accept env as an array of key-value objects", () => {
+      const config = {
+        ...minimalConfig,
+        env: [
+          { key: "NODE_ENV", value: "production" },
+          { key: "PORT", value: "3000" },
+        ],
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(Array.isArray(result.env)).toBe(true);
+      expect(result.env).toHaveLength(2);
+      if (Array.isArray(result.env)) {
+        expect(result.env[0].key).toBe("NODE_ENV");
+        expect(result.env[0].value).toBe("production");
+      }
+    });
+
+    it("should accept env as an object with a file field", () => {
+      const config = {
+        ...minimalConfig,
+        env: { file: ".env.production" },
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(Array.isArray(result.env)).toBe(false);
+      expect(result.env).toEqual({ file: ".env.production" });
+    });
+
+    it("should accept config without env field", () => {
+      const result = fleetConfigSchema.parse(minimalConfig);
+      expect(result.env).toBeUndefined();
+    });
+
+    it("should reject env as a plain string", () => {
+      const config = {
+        ...minimalConfig,
+        env: "not-valid",
+      };
+      const result = fleetConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject env as an object without file field", () => {
+      const config = {
+        ...minimalConfig,
+        env: { path: ".env" },
+      };
+      const result = fleetConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject env as an object with file as a number", () => {
+      const config = {
+        ...minimalConfig,
+        env: { file: 123 },
+      };
+      const result = fleetConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject env as an array with invalid objects", () => {
+      const config = {
+        ...minimalConfig,
+        env: [{ key: "FOO" }],
+      };
+      const result = fleetConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
+    });
+
+    it("should accept env as an empty array", () => {
+      const config = {
+        ...minimalConfig,
+        env: [],
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(Array.isArray(result.env)).toBe(true);
+      expect(result.env).toHaveLength(0);
+    });
+  });
 });
