@@ -10,3 +10,4 @@ export {
   printSummary,
 } from "./helpers";
 export { deploy } from "./deploy";
+export { bootstrapInfisicalCli } from "./infisical";

@@ -121,61 +121,48 @@ export async function uploadFile(
 }
 
 /**
- * Handles `env` (key-value pairs) and `infisical` (API call) cases
- * and uploads the result as a `.env` file with `0600` permissions.
+ * Handles `env.entries` (key-value pairs written directly) and `env.infisical`
+ * (remote CLI export) cases, producing a `.env` file with `0600` permissions.
  */
 export async function resolveSecrets(
   exec: ExecFn,
   config: FleetConfig,
   stackDir: string
 ): Promise<void> {
-  let envContent = "";
+  if (config.env?.entries && config.env.entries.length > 0) {
+    // Handle inline env key-value pairs — format as KEY=VALUE lines
+    const lines = config.env.entries.map((e) => `${e.key}=${e.value}`);
+    const envContent = lines.join("\n") + "\n";
 
-  if (config.env && config.env.length > 0) {
-    // Handle env key-value pairs — format as KEY=VALUE lines
-    const lines = config.env.map((e) => `${e.key}=${e.value}`);
-    envContent = lines.join("\n") + "\n";
-  } else if (config.infisical) {
-    // Handle Infisical API call
-    const { project_id, environment } = config.infisical;
-    const token = process.env.INFISICAL_TOKEN;
-    if (!token) {
-      throw new Error(
-        "INFISICAL_TOKEN environment variable is required when using infisical secrets"
-      );
-    }
-
-    const url = `https://app.infisical.com/api/v3/secrets/raw?workspaceId=${project_id}&environment=${environment}`;
-    const result = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+    await uploadFile(exec, {
+      content: envContent,
+      remotePath: `${stackDir}/.env`,
+      permissions: "0600",
     });
+  } else if (config.env?.infisical) {
+    // Handle Infisical CLI-based export on the remote server
+    const { token, project_id, environment, path: secretPath } = config.env.infisical;
 
-    if (!result.ok) {
+    const exportCmd = `infisical export --token=${token} --projectId=${project_id} --env=${environment} --path=${secretPath} --format=dotenv > ${stackDir}/.env`;
+    const result = await exec(exportCmd);
+
+    if (result.code !== 0) {
       throw new Error(
-        `Failed to fetch secrets from Infisical: ${result.status} ${result.statusText}`
+        `Failed to export secrets via Infisical CLI: ${result.stderr}`
       );
     }
 
-    const data = (await result.json()) as {
-      secrets: Array<{ secretKey: string; secretValue: string }>;
-    };
-
-    const lines = data.secrets.map(
-      (s) => `${s.secretKey}=${s.secretValue}`
-    );
-    envContent = lines.join("\n") + "\n";
+    // Set file permissions to 0600
+    const chmodResult = await exec(`chmod 0600 ${stackDir}/.env`);
+    if (chmodResult.code !== 0) {
+      throw new Error(
+        `Failed to set .env file permissions: ${chmodResult.stderr}`
+      );
+    }
   } else {
     // No secrets to resolve
     return;
   }
-
-  await uploadFile(exec, {
-    content: envContent,
-    remotePath: `${stackDir}/.env`,
-    permissions: "0600",
-  });
 }
 
 /**

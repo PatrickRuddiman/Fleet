@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fs from "fs";
+import yaml from "yaml";
 import { fleetConfigSchema } from "../src/config/schema";
+import { loadFleetConfig } from "../src/config/loader";
 
 describe("fleetConfigSchema", () => {
   const minimalConfig = {
@@ -28,11 +31,13 @@ describe("fleetConfigSchema", () => {
         version: "1" as const,
         server: { host: "10.0.0.1", port: 2222, user: "deploy" },
         stack: { name: "web-app", compose_file: "compose.prod.yml" },
-        env: [
-          { key: "NODE_ENV", value: "production" },
-          { key: "PORT", value: "3000" },
-        ],
-        infisical: { project_id: "proj-123", environment: "prod" },
+        env: {
+          entries: [
+            { key: "NODE_ENV", value: "production" },
+            { key: "PORT", value: "3000" },
+          ],
+          infisical: { token: "$INFISICAL_TOKEN", project_id: "proj-123", environment: "prod" },
+        },
         routes: [
           {
             domain: "app.example.com",
@@ -53,8 +58,10 @@ describe("fleetConfigSchema", () => {
       expect(result.server.port).toBe(2222);
       expect(result.server.user).toBe("deploy");
       expect(result.stack.compose_file).toBe("compose.prod.yml");
-      expect(result.env).toHaveLength(2);
-      expect(result.infisical!.project_id).toBe("proj-123");
+      expect(result.env!.entries).toHaveLength(2);
+      expect(result.env!.infisical!.project_id).toBe("proj-123");
+      expect(result.env!.infisical!.token).toBe("$INFISICAL_TOKEN");
+      expect(result.env!.infisical!.path).toBe("/");
       expect(result.routes[0].acme_email).toBe("admin@example.com");
       expect(result.routes[0].health_check!.timeout_seconds).toBe(60);
     });
@@ -289,5 +296,245 @@ describe("fleetConfigSchema", () => {
         expect(stackIssue!.message).toBeTruthy();
       }
     });
+  });
+
+  describe("env.infisical schema", () => {
+    it("should parse a valid env.infisical block with all fields", () => {
+      const config = {
+        ...minimalConfig,
+        env: {
+          infisical: {
+            token: "$INFISICAL_TOKEN",
+            project_id: "proj-abc-123",
+            environment: "production",
+            path: "/backend",
+          },
+        },
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(result.env!.infisical!.token).toBe("$INFISICAL_TOKEN");
+      expect(result.env!.infisical!.project_id).toBe("proj-abc-123");
+      expect(result.env!.infisical!.environment).toBe("production");
+      expect(result.env!.infisical!.path).toBe("/backend");
+    });
+
+    it("should default infisical path to '/'", () => {
+      const config = {
+        ...minimalConfig,
+        env: {
+          infisical: {
+            token: "$INFISICAL_TOKEN",
+            project_id: "proj-123",
+            environment: "dev",
+          },
+        },
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(result.env!.infisical!.path).toBe("/");
+    });
+
+    it("should reject infisical block missing token", () => {
+      const config = {
+        ...minimalConfig,
+        env: {
+          infisical: {
+            project_id: "proj-123",
+            environment: "prod",
+          },
+        },
+      };
+      const result = fleetConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject infisical block missing project_id", () => {
+      const config = {
+        ...minimalConfig,
+        env: {
+          infisical: {
+            token: "$TOKEN",
+            environment: "prod",
+          },
+        },
+      };
+      const result = fleetConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject infisical block missing environment", () => {
+      const config = {
+        ...minimalConfig,
+        env: {
+          infisical: {
+            token: "$TOKEN",
+            project_id: "proj-123",
+          },
+        },
+      };
+      const result = fleetConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
+    });
+
+    it("should accept token as env var reference starting with $", () => {
+      const config = {
+        ...minimalConfig,
+        env: {
+          infisical: {
+            token: "$MY_SECRET_TOKEN",
+            project_id: "proj-123",
+            environment: "prod",
+          },
+        },
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(result.env!.infisical!.token).toBe("$MY_SECRET_TOKEN");
+    });
+
+    it("should accept token as a literal string value", () => {
+      const config = {
+        ...minimalConfig,
+        env: {
+          infisical: {
+            token: "st.abc123.xyz789",
+            project_id: "proj-123",
+            environment: "prod",
+          },
+        },
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(result.env!.infisical!.token).toBe("st.abc123.xyz789");
+    });
+
+    it("should reject non-string token value", () => {
+      const config = {
+        ...minimalConfig,
+        env: {
+          infisical: {
+            token: 12345,
+            project_id: "proj-123",
+            environment: "prod",
+          },
+        },
+      };
+      const result = fleetConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
+    });
+
+    it("should parse env with only entries (no infisical)", () => {
+      const config = {
+        ...minimalConfig,
+        env: {
+          entries: [
+            { key: "NODE_ENV", value: "production" },
+            { key: "PORT", value: "3000" },
+          ],
+        },
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(result.env!.entries).toHaveLength(2);
+      expect(result.env!.entries![0].key).toBe("NODE_ENV");
+      expect(result.env!.entries![0].value).toBe("production");
+      expect(result.env!.infisical).toBeUndefined();
+    });
+
+    it("should parse env with both entries and infisical", () => {
+      const config = {
+        ...minimalConfig,
+        env: {
+          entries: [{ key: "EXTRA_VAR", value: "extra-value" }],
+          infisical: {
+            token: "$TOKEN",
+            project_id: "proj-123",
+            environment: "staging",
+          },
+        },
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(result.env!.entries).toHaveLength(1);
+      expect(result.env!.infisical).toBeDefined();
+      expect(result.env!.infisical!.project_id).toBe("proj-123");
+    });
+
+    it("should parse config without env field at all", () => {
+      const result = fleetConfigSchema.parse(minimalConfig);
+      expect(result.env).toBeUndefined();
+    });
+  });
+});
+
+describe("loadFleetConfig token expansion", () => {
+  beforeEach(() => {
+    vi.spyOn(fs, "readFileSync");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("should expand $ENV_VAR token from process.env", () => {
+    const yamlContent = yaml.stringify({
+      version: "1",
+      server: { host: "192.168.1.1" },
+      stack: { name: "myapp" },
+      env: {
+        infisical: {
+          token: "$MY_INFISICAL_TOKEN",
+          project_id: "proj-123",
+          environment: "prod",
+        },
+      },
+      routes: [{ domain: "example.com", port: 3000 }],
+    });
+    vi.mocked(fs.readFileSync).mockReturnValue(yamlContent);
+
+    process.env.MY_INFISICAL_TOKEN = "expanded-secret-token";
+    try {
+      const config = loadFleetConfig("fleet.yml");
+      expect(config.env!.infisical!.token).toBe("expanded-secret-token");
+    } finally {
+      delete process.env.MY_INFISICAL_TOKEN;
+    }
+  });
+
+  it("should throw when referenced env var is not set", () => {
+    const yamlContent = yaml.stringify({
+      version: "1",
+      server: { host: "192.168.1.1" },
+      stack: { name: "myapp" },
+      env: {
+        infisical: {
+          token: "$MISSING_VAR",
+          project_id: "proj-123",
+          environment: "prod",
+        },
+      },
+      routes: [{ domain: "example.com", port: 3000 }],
+    });
+    vi.mocked(fs.readFileSync).mockReturnValue(yamlContent);
+
+    delete process.env.MISSING_VAR;
+    expect(() => loadFleetConfig("fleet.yml")).toThrow(
+      'Environment variable "MISSING_VAR" referenced by env.infisical.token in fleet.yml is not set'
+    );
+  });
+
+  it("should not expand token that does not start with $", () => {
+    const yamlContent = yaml.stringify({
+      version: "1",
+      server: { host: "192.168.1.1" },
+      stack: { name: "myapp" },
+      env: {
+        infisical: {
+          token: "literal-token-value",
+          project_id: "proj-123",
+          environment: "prod",
+        },
+      },
+      routes: [{ domain: "example.com", port: 3000 }],
+    });
+    vi.mocked(fs.readFileSync).mockReturnValue(yamlContent);
+
+    const config = loadFleetConfig("fleet.yml");
+    expect(config.env!.infisical!.token).toBe("literal-token-value");
   });
 });
