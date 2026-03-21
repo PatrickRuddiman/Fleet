@@ -7,7 +7,7 @@ export const serverSchema = z.object({
   identity_file: z.string().optional(),
 });
 
-export const envSchema = z.object({
+export const envEntrySchema = z.object({
   key: z.string(),
   value: z.string(),
 });
@@ -17,8 +17,15 @@ export const envFileSchema = z.object({
 });
 
 export const infisicalSchema = z.object({
+  token: z.string(),
   project_id: z.string(),
   environment: z.string(),
+  path: z.string().default("/"),
+});
+
+export const envSchema = z.object({
+  entries: z.array(envEntrySchema).optional(),
+  infisical: infisicalSchema.optional(),
 });
 
 export const healthCheckSchema = z.object({
@@ -47,8 +54,7 @@ export const fleetConfigSchema = z.object({
   version: z.literal("1"),
   server: serverSchema,
   stack: stackSchema,
-  env: z.union([z.array(envSchema), envFileSchema]).optional(),
-  infisical: infisicalSchema.optional(),
+  env: z.union([z.array(envEntrySchema), envFileSchema, envSchema]).optional(),
   routes: z.array(routeSchema).min(1),
 });
 
@@ -57,5 +63,7 @@ export type ServerConfig = z.infer<typeof serverSchema>;
 export type StackConfig = z.infer<typeof stackSchema>;
 export type RouteConfig = z.infer<typeof routeSchema>;
 export type EnvConfig = z.infer<typeof envSchema>;
+export type EnvEntry = z.infer<typeof envEntrySchema>;
+export type InfisicalConfig = z.infer<typeof infisicalSchema>;
 export type HealthCheckConfig = z.infer<typeof healthCheckSchema>;
 export type EnvFileConfig = z.infer<typeof envFileSchema>;

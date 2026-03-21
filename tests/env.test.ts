@@ -59,6 +59,19 @@ vi.mock("../src/deploy", () => ({
   ) => {
     mockResolveSecretsCallsRef.value.push({ config, stackDir });
   },
+  configHasSecrets: (config: FleetConfig) => {
+    if (!config.env) return false;
+    if ("file" in config.env) return true;
+    if (Array.isArray(config.env)) return config.env.length > 0;
+    return (
+      (config.env.entries !== undefined && config.env.entries.length > 0) ||
+      config.env.infisical !== undefined
+    );
+  },
+}));
+
+vi.mock("../src/deploy/infisical", () => ({
+  bootstrapInfisicalCli: async () => {},
 }));
 
 // Import pushEnv after mock declarations
@@ -101,7 +114,14 @@ function configWithInfisical(): FleetConfig {
     version: "1" as const,
     server: { host: "example.com", port: 22, user: "root" },
     stack: { name: "myapp", compose_file: "compose.yml" },
-    infisical: { project_id: "proj-123", environment: "production" },
+    env: {
+      infisical: {
+        token: "my-token",
+        project_id: "proj-123",
+        environment: "production",
+        path: "/",
+      },
+    },
     routes: [{ domain: "myapp.example.com", port: 3000, tls: true }],
   } as FleetConfig;
 }
@@ -175,9 +195,12 @@ describe("pushEnv", () => {
     expect(mockResolveSecretsCallsRef.value[0].stackDir).toBe(
       "/opt/fleet/stacks/myapp"
     );
-    expect(mockResolveSecretsCallsRef.value[0].config.infisical).toEqual({
+    const env = mockResolveSecretsCallsRef.value[0].config.env as { infisical?: { token: string; project_id: string; environment: string; path: string } };
+    expect(env.infisical).toEqual({
+      token: "my-token",
       project_id: "proj-123",
       environment: "production",
+      path: "/",
     });
   });
 

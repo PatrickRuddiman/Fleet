@@ -2,7 +2,8 @@ import path from "path";
 import { loadFleetConfig } from "../config";
 import { createConnection, Connection } from "../ssh";
 import { readState, getStack } from "../state";
-import { resolveSecrets } from "../deploy";
+import { resolveSecrets, configHasSecrets } from "../deploy";
+import { bootstrapInfisicalCli } from "../deploy/infisical";
 
 export async function pushEnv(): Promise<void> {
   let connection: Connection | null = null;
@@ -14,11 +15,9 @@ export async function pushEnv(): Promise<void> {
     const config = loadFleetConfig(configPath);
 
     // Step 2: Validate env source presence (fail fast, before SSH)
-    const hasEnv = config.env && config.env.length > 0;
-    const hasInfisical = config.infisical !== undefined;
-    if (!hasEnv && !hasInfisical) {
+    if (!configHasSecrets(config)) {
       throw new Error(
-        "No env source configured in fleet.yml. Define either an 'env' array or an 'infisical' block."
+        "No env source configured in fleet.yml. Define an 'env' array, env.file, or env.infisical block."
       );
     }
 
@@ -42,9 +41,15 @@ export async function pushEnv(): Promise<void> {
 
     const stackDir = stackState.path;
 
-    // Step 6: Resolve and upload secrets
+    // Step 6: Bootstrap Infisical CLI if needed
+    if (config.env && !Array.isArray(config.env) && "infisical" in config.env && config.env.infisical) {
+      console.log("  Bootstrapping Infisical CLI...");
+      await bootstrapInfisicalCli(exec);
+    }
+
+    // Step 7: Resolve and upload secrets
     console.log("Step 5: Resolving and pushing secrets...");
-    await resolveSecrets(exec, config, stackDir);
+    await resolveSecrets(exec, config, stackDir, path.dirname(configPath));
 
     // Step 7: Log success
     console.log(

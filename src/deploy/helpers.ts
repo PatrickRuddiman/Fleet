@@ -153,8 +153,8 @@ export async function uploadFileBase64(
 }
 
 /**
- * Handles `env` (key-value pairs) and `infisical` (API call) cases
- * and uploads the result as a `.env` file with `0600` permissions.
+ * Handles `env` entries (key-value pairs), `env.file` (local file upload),
+ * `env.infisical` (remote CLI export), producing a `.env` file with `0600` permissions.
  */
 export async function resolveSecrets(
   exec: ExecFn,
@@ -162,10 +162,12 @@ export async function resolveSecrets(
   stackDir: string,
   configDir?: string
 ): Promise<void> {
-  let envContent = "";
+  if (!config.env) {
+    return;
+  }
 
-  if (config.env && "file" in config.env) {
-    // Handle env.file — read local file and upload via base64
+  // Handle env.file — read local file and upload via base64
+  if ("file" in config.env) {
     if (!configDir) {
       throw new Error(
         "configDir is required when using env.file"
@@ -177,7 +179,7 @@ export async function resolveSecrets(
         `env.file not found: ${config.env.file} (resolved to ${envFilePath})`
       );
     }
-    envContent = fs.readFileSync(envFilePath, "utf-8");
+    const envContent = fs.readFileSync(envFilePath, "utf-8");
 
     await uploadFileBase64(exec, {
       content: envContent,
@@ -187,51 +189,56 @@ export async function resolveSecrets(
 
     console.log(`  Uploaded env file (${Buffer.byteLength(envContent)} bytes)`);
     return;
-  } else if (config.env && Array.isArray(config.env) && config.env.length > 0) {
-    // Handle env key-value pairs — format as KEY=VALUE lines
+  }
+
+  // Handle env as array of key-value pairs
+  if (Array.isArray(config.env)) {
+    if (config.env.length === 0) {
+      return;
+    }
     const lines = config.env.map((e) => `${e.key}=${e.value}`);
-    envContent = lines.join("\n") + "\n";
-  } else if (config.infisical) {
-    // Handle Infisical API call
-    const { project_id, environment } = config.infisical;
-    const token = process.env.INFISICAL_TOKEN;
-    if (!token) {
-      throw new Error(
-        "INFISICAL_TOKEN environment variable is required when using infisical secrets"
-      );
-    }
+    const envContent = lines.join("\n") + "\n";
 
-    const url = `https://app.infisical.com/api/v3/secrets/raw?workspaceId=${project_id}&environment=${environment}`;
-    const result = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+    await uploadFile(exec, {
+      content: envContent,
+      remotePath: `${stackDir}/.env`,
+      permissions: "0600",
     });
-
-    if (!result.ok) {
-      throw new Error(
-        `Failed to fetch secrets from Infisical: ${result.status} ${result.statusText}`
-      );
-    }
-
-    const data = (await result.json()) as {
-      secrets: Array<{ secretKey: string; secretValue: string }>;
-    };
-
-    const lines = data.secrets.map(
-      (s) => `${s.secretKey}=${s.secretValue}`
-    );
-    envContent = lines.join("\n") + "\n";
-  } else {
-    // No secrets to resolve
     return;
   }
 
-  await uploadFile(exec, {
-    content: envContent,
-    remotePath: `${stackDir}/.env`,
-    permissions: "0600",
-  });
+  // Handle env as object with entries and/or infisical
+  if (config.env.entries && config.env.entries.length > 0) {
+    const lines = config.env.entries.map((e) => `${e.key}=${e.value}`);
+    const envContent = lines.join("\n") + "\n";
+
+    await uploadFile(exec, {
+      content: envContent,
+      remotePath: `${stackDir}/.env`,
+      permissions: "0600",
+    });
+  }
+
+  if (config.env.infisical) {
+    const { token, project_id, environment, path: secretPath } = config.env.infisical;
+
+    const exportCmd = `infisical export --token=${token} --projectId=${project_id} --env=${environment} --path=${secretPath} --format=dotenv > ${stackDir}/.env`;
+    const result = await exec(exportCmd);
+
+    if (result.code !== 0) {
+      throw new Error(
+        `Failed to export secrets via Infisical CLI: ${result.stderr}`
+      );
+    }
+
+    // Set file permissions to 0600
+    const chmodResult = await exec(`chmod 0600 ${stackDir}/.env`);
+    if (chmodResult.code !== 0) {
+      throw new Error(
+        `Failed to set .env file permissions: ${chmodResult.stderr}`
+      );
+    }
+  }
 }
 
 /**
@@ -346,11 +353,18 @@ export async function registerRoutes(
  * the `--env-file` flag on `docker compose up`.
  */
 export function configHasSecrets(config: FleetConfig): boolean {
+  if (!config.env) return false;
+
+  // env is { file: string }
+  if ("file" in config.env) return true;
+
+  // env is array of { key, value }
+  if (Array.isArray(config.env)) return config.env.length > 0;
+
+  // env is { entries?, infisical? }
   return (
-    (config.env !== undefined &&
-      ("file" in config.env ||
-        (Array.isArray(config.env) && config.env.length > 0))) ||
-    config.infisical !== undefined
+    (config.env.entries !== undefined && config.env.entries.length > 0) ||
+    config.env.infisical !== undefined
   );
 }
 

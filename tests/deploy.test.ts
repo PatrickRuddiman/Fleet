@@ -336,10 +336,12 @@ describe("resolveSecrets", () => {
       version: "1" as const,
       server: { host: "example.com", port: 22, user: "root" },
       stack: { name: "myapp", compose_file: "compose.yml" },
-      env: [
-        { key: "DB_HOST", value: "localhost" },
-        { key: "DB_PORT", value: "5432" },
-      ],
+      env: {
+        entries: [
+          { key: "DB_HOST", value: "localhost" },
+          { key: "DB_PORT", value: "5432" },
+        ],
+      },
       routes: [{ domain: "myapp.example.com", port: 3000, tls: true }],
     } as FleetConfig;
 
@@ -375,6 +377,70 @@ describe("resolveSecrets", () => {
     await resolveSecrets(exec, config, "/opt/fleet/stacks/myapp");
 
     expect(commands).toHaveLength(0);
+  });
+
+  it("should invoke infisical CLI and chmod when config has env.infisical", async () => {
+    const config = {
+      version: "1" as const,
+      server: { host: "example.com", port: 22, user: "root" },
+      stack: { name: "myapp", compose_file: "compose.yml" },
+      env: {
+        infisical: {
+          token: "my-secret-token",
+          project_id: "proj-456",
+          environment: "production",
+          path: "/backend",
+        },
+      },
+      routes: [{ domain: "myapp.example.com", port: 3000, tls: true }],
+    } as FleetConfig;
+
+    const commands: string[] = [];
+    const exec: ExecFn = async (cmd) => {
+      commands.push(cmd);
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    await resolveSecrets(exec, config, "/opt/fleet/stacks/myapp");
+
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).toContain("infisical export");
+    expect(commands[0]).toContain("--token=my-secret-token");
+    expect(commands[0]).toContain("--projectId=proj-456");
+    expect(commands[0]).toContain("--env=production");
+    expect(commands[0]).toContain("--path=/backend");
+    expect(commands[0]).toContain("--format=dotenv");
+    expect(commands[0]).toContain("/opt/fleet/stacks/myapp/.env");
+    expect(commands[1]).toContain("chmod 0600");
+    expect(commands[1]).toContain("/opt/fleet/stacks/myapp/.env");
+  });
+
+  it("should throw when infisical CLI exits with non-zero code", async () => {
+    const config = {
+      version: "1" as const,
+      server: { host: "example.com", port: 22, user: "root" },
+      stack: { name: "myapp", compose_file: "compose.yml" },
+      env: {
+        infisical: {
+          token: "bad-token",
+          project_id: "proj-789",
+          environment: "staging",
+          path: "/",
+        },
+      },
+      routes: [{ domain: "myapp.example.com", port: 3000, tls: true }],
+    } as FleetConfig;
+
+    const exec: ExecFn = async (cmd) => {
+      if (cmd.includes("infisical export")) {
+        return { stdout: "", stderr: "authentication failed", code: 1 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    await expect(
+      resolveSecrets(exec, config, "/opt/fleet/stacks/myapp")
+    ).rejects.toThrow("Failed to export secrets via Infisical CLI");
   });
 
   describe("env.file", () => {
@@ -594,10 +660,10 @@ describe("configHasSecrets", () => {
     expect(configHasSecrets(config)).toBe(true);
   });
 
-  it("should return true when infisical is configured", () => {
+  it("should return true when infisical is configured via env.infisical", () => {
     const config = {
       ...baseConfig,
-      infisical: { project_id: "proj123", environment: "production" },
+      env: { infisical: { token: "tok", project_id: "proj123", environment: "production", path: "/" } },
     } as FleetConfig;
     expect(configHasSecrets(config)).toBe(true);
   });
@@ -611,11 +677,11 @@ describe("configHasSecrets", () => {
     expect(configHasSecrets(config)).toBe(false);
   });
 
-  it("should return true when both env.file and infisical are present", () => {
+  it("should return true when both env.file and env.infisical are present", () => {
+    // Note: env can only be one type at a time in the union, so test with infisical in env object
     const config = {
       ...baseConfig,
-      env: { file: ".env" },
-      infisical: { project_id: "proj123", environment: "staging" },
+      env: { infisical: { token: "tok", project_id: "proj123", environment: "staging", path: "/" } },
     } as FleetConfig;
     expect(configHasSecrets(config)).toBe(true);
   });
