@@ -1,4 +1,5 @@
-import { FleetState, StackState, ExecFn } from "./types";
+import { FleetState, StackState } from "./types";
+import { ExecFn } from "../ssh";
 
 function defaultState(): FleetState {
   return {
@@ -11,7 +12,7 @@ function defaultState(): FleetState {
 export async function readState(exec: ExecFn): Promise<FleetState> {
   const result = await exec("cat ~/.fleet/state.json");
 
-  if (result.exitCode !== 0 || result.stdout.trim() === "") {
+  if (result.code !== 0 || result.stdout.trim() === "") {
     return defaultState();
   }
 
@@ -48,12 +49,12 @@ export async function writeState(
 
   const result = await exec(command);
 
-  if (result.exitCode !== 0) {
+  if (result.code !== 0) {
     const detail = result.stderr
       ? ` — ${result.stderr}`
       : "";
     throw new Error(
-      `Failed to write state file: command exited with code ${result.exitCode}${detail}`
+      `Failed to write state file: command exited with code ${result.code}${detail}`
     );
   }
 }
