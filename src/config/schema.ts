@@ -4,6 +4,7 @@ export const serverSchema = z.object({
   host: z.string(),
   port: z.number().int().default(22),
   user: z.string().default("root"),
+  identity_file: z.string().optional(),
 });
 
 export const envSchema = z.object({
