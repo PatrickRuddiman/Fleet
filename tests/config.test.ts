@@ -246,6 +246,22 @@ describe("fleetConfigSchema", () => {
     });
   });
 
+  describe("server identity_file field", () => {
+    it("should parse when identity_file is present", () => {
+      const config = {
+        ...minimalConfig,
+        server: { host: "192.168.1.1", identity_file: "~/.ssh/id_rsa" },
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(result.server.identity_file).toBe("~/.ssh/id_rsa");
+    });
+
+    it("should be undefined when identity_file is absent", () => {
+      const result = fleetConfigSchema.parse(minimalConfig);
+      expect(result.server.identity_file).toBeUndefined();
+    });
+  });
+
   describe("error message content", () => {
     it("should include field path in error for missing server.host", () => {
       const result = fleetConfigSchema.safeParse({

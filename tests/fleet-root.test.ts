@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ExecResult, Exec } from "../src/ssh";
+import type { ExecResult, ExecFn } from "../src/ssh";
 import { resolveFleetRoot, readFleetRoot } from "../src/fleet-root";
 
 /**
@@ -8,22 +8,22 @@ import { resolveFleetRoot, readFleetRoot } from "../src/fleet-root";
  */
 function createMockExec(
   handlers: Record<string, ExecResult>
-): Exec {
+): ExecFn {
   return async (command: string): Promise<ExecResult> => {
     for (const [pattern, result] of Object.entries(handlers)) {
       if (command.includes(pattern)) {
         return result;
       }
     }
-    return { exitCode: 1, stdout: "", stderr: `unhandled command: ${command}` };
+    return { code: 1, stdout: "", stderr: `unhandled command: ${command}` };
   };
 }
 
 describe("resolveFleetRoot", () => {
   it("should resolve to /opt/fleet when mkdir succeeds", async () => {
     const exec = createMockExec({
-      "mkdir -p /opt/fleet": { exitCode: 0, stdout: "", stderr: "" },
-      "echo '/opt/fleet' > ~/.fleet-root": { exitCode: 0, stdout: "", stderr: "" },
+      "mkdir -p /opt/fleet": { code: 0, stdout: "", stderr: "" },
+      "echo '/opt/fleet' > ~/.fleet-root": { code: 0, stdout: "", stderr: "" },
     });
 
     const result = await resolveFleetRoot(exec);
@@ -33,14 +33,14 @@ describe("resolveFleetRoot", () => {
   it("should fall back to ~/fleet on permission denied", async () => {
     const exec = createMockExec({
       "mkdir -p /opt/fleet": {
-        exitCode: 1,
+        code: 1,
         stdout: "",
         stderr: "mkdir: cannot create directory '/opt/fleet': Permission denied",
       },
-      "echo ~": { exitCode: 0, stdout: "/home/deploy\n", stderr: "" },
-      "mkdir -p /home/deploy/fleet": { exitCode: 0, stdout: "", stderr: "" },
+      "echo ~": { code: 0, stdout: "/home/deploy\n", stderr: "" },
+      "mkdir -p /home/deploy/fleet": { code: 0, stdout: "", stderr: "" },
       "echo '/home/deploy/fleet' > ~/.fleet-root": {
-        exitCode: 0,
+        code: 0,
         stdout: "",
         stderr: "",
       },
@@ -53,14 +53,14 @@ describe("resolveFleetRoot", () => {
   it("should fall back to ~/fleet on 'Operation not permitted'", async () => {
     const exec = createMockExec({
       "mkdir -p /opt/fleet": {
-        exitCode: 1,
+        code: 1,
         stdout: "",
         stderr: "Operation not permitted",
       },
-      "echo ~": { exitCode: 0, stdout: "/home/user\n", stderr: "" },
-      "mkdir -p /home/user/fleet": { exitCode: 0, stdout: "", stderr: "" },
+      "echo ~": { code: 0, stdout: "/home/user\n", stderr: "" },
+      "mkdir -p /home/user/fleet": { code: 0, stdout: "", stderr: "" },
       "echo '/home/user/fleet' > ~/.fleet-root": {
-        exitCode: 0,
+        code: 0,
         stdout: "",
         stderr: "",
       },
@@ -73,7 +73,7 @@ describe("resolveFleetRoot", () => {
   it("should throw when /opt/fleet fails with a non-permission error", async () => {
     const exec = createMockExec({
       "mkdir -p /opt/fleet": {
-        exitCode: 1,
+        code: 1,
         stdout: "",
         stderr: "I/O error",
       },
@@ -88,13 +88,13 @@ describe("resolveFleetRoot", () => {
   it("should throw when both /opt/fleet and ~/fleet fail", async () => {
     const exec = createMockExec({
       "mkdir -p /opt/fleet": {
-        exitCode: 1,
+        code: 1,
         stdout: "",
         stderr: "Permission denied",
       },
-      "echo ~": { exitCode: 0, stdout: "/home/deploy\n", stderr: "" },
+      "echo ~": { code: 0, stdout: "/home/deploy\n", stderr: "" },
       "mkdir -p /home/deploy/fleet": {
-        exitCode: 1,
+        code: 1,
         stdout: "",
         stderr: "Read-only file system",
       },
@@ -109,7 +109,7 @@ describe("resolveFleetRoot", () => {
 describe("readFleetRoot", () => {
   it("should return the path when .fleet-root file exists", async () => {
     const exec = createMockExec({
-      "cat ~/.fleet-root": { exitCode: 0, stdout: "/opt/fleet", stderr: "" },
+      "cat ~/.fleet-root": { code: 0, stdout: "/opt/fleet", stderr: "" },
     });
 
     const result = await readFleetRoot(exec);
@@ -119,7 +119,7 @@ describe("readFleetRoot", () => {
   it("should return null when .fleet-root file does not exist", async () => {
     const exec = createMockExec({
       "cat ~/.fleet-root": {
-        exitCode: 1,
+        code: 1,
         stdout: "",
         stderr: "No such file or directory",
       },
@@ -132,7 +132,7 @@ describe("readFleetRoot", () => {
   it("should trim whitespace from the returned path", async () => {
     const exec = createMockExec({
       "cat ~/.fleet-root": {
-        exitCode: 0,
+        code: 0,
         stdout: "  /opt/fleet  \n",
         stderr: "",
       },
