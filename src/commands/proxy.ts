@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { proxyStatus } from "../proxy-status";
 
 export function register(program: Command): void {
   const proxy = program
@@ -8,8 +9,17 @@ export function register(program: Command): void {
   proxy
     .command("status")
     .description("Show proxy status")
-    .action(() => {
-      console.log("not yet implemented");
+    .action(async () => {
+      try {
+        await proxyStatus();
+      } catch (error) {
+        if (error instanceof Error) {
+          console.error(error.message);
+        } else {
+          console.error("Proxy status failed with an unknown error.");
+        }
+        process.exit(1);
+      }
     });
 
   proxy
