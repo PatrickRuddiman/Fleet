@@ -12,6 +12,10 @@ export const envSchema = z.object({
   value: z.string(),
 });
 
+export const envFileSchema = z.object({
+  file: z.string(),
+});
+
 export const infisicalSchema = z.object({
   project_id: z.string(),
   environment: z.string(),
@@ -43,7 +47,7 @@ export const fleetConfigSchema = z.object({
   version: z.literal("1"),
   server: serverSchema,
   stack: stackSchema,
-  env: z.array(envSchema).optional(),
+  env: z.union([z.array(envSchema), envFileSchema]).optional(),
   infisical: infisicalSchema.optional(),
   routes: z.array(routeSchema).min(1),
 });
@@ -54,3 +58,4 @@ export type StackConfig = z.infer<typeof stackSchema>;
 export type RouteConfig = z.infer<typeof routeSchema>;
 export type EnvConfig = z.infer<typeof envSchema>;
 export type HealthCheckConfig = z.infer<typeof healthCheckSchema>;
+export type EnvFileConfig = z.infer<typeof envFileSchema>;
