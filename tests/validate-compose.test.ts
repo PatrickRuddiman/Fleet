@@ -4,13 +4,8 @@ import path from "path";
 import os from "os";
 import yaml from "yaml";
 import { loadFleetConfig } from "../src/config";
-import {
-  loadComposeFile,
-  serviceExists,
-  findServicesWithoutImageOrBuild,
-  findHostPortBindings,
-  findReservedPortConflicts,
-} from "../src/compose";
+import { loadComposeFile } from "../src/compose";
+import { runAllChecks, Finding, Codes } from "../src/validation";
 
 let tmpDir: string;
 
@@ -34,42 +29,11 @@ function writeComposeFile(content: string, filename = "docker-compose.yml"): str
   return filePath;
 }
 
-function runValidation(config: any, compose: any, composePath: string) {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  for (const route of config.routes) {
-    if (route.service !== undefined && !serviceExists(compose, route.service)) {
-      errors.push(
-        `Route "${route.domain}" references service "${route.service}" which does not exist in ${composePath}`
-      );
-    }
-  }
-
-  const reservedConflicts = findReservedPortConflicts(compose);
-  for (const binding of reservedConflicts) {
-    errors.push(
-      `Service "${binding.service}" binds host port ${binding.hostPort} which is reserved for Caddy`
-    );
-  }
-
-  const noImageOrBuild = findServicesWithoutImageOrBuild(compose);
-  for (const name of noImageOrBuild) {
-    warnings.push(
-      `Service "${name}" has no "image" or "build" directive`
-    );
-  }
-
-  const allBindings = findHostPortBindings(compose);
-  for (const binding of allBindings) {
-    if (binding.hostPort !== 80 && binding.hostPort !== 443) {
-      warnings.push(
-        `Service "${binding.service}" binds host port ${binding.hostPort} which may conflict with other stacks`
-      );
-    }
-  }
-
-  return { errors, warnings };
+function runValidation(config: any, compose: any) {
+  const findings = runAllChecks(config, compose);
+  const errors = findings.filter((f: Finding) => f.severity === "error");
+  const warnings = findings.filter((f: Finding) => f.severity === "warning");
+  return { errors, warnings, findings };
 }
 
 describe("validate compose integration", () => {
@@ -96,7 +60,7 @@ describe("validate compose integration", () => {
     const config = loadFleetConfig(fleetPath);
     const composePath = path.resolve(path.dirname(fleetPath), config.stack.compose_file);
     const compose = loadComposeFile(composePath);
-    const { errors, warnings } = runValidation(config, compose, composePath);
+    const { errors, warnings } = runValidation(config, compose);
 
     expect(errors).toHaveLength(0);
     expect(warnings).toHaveLength(0);
@@ -123,10 +87,11 @@ describe("validate compose integration", () => {
     const config = loadFleetConfig(fleetPath);
     const composePath = path.resolve(path.dirname(fleetPath), config.stack.compose_file);
     const compose = loadComposeFile(composePath);
-    const { errors, warnings } = runValidation(config, compose, composePath);
+    const { errors } = runValidation(config, compose);
 
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("worker");
+    expect(errors[0].code).toBe(Codes.SERVICE_NOT_FOUND);
+    expect(errors[0].message).toContain("worker");
   });
 
   it("compose file with port 80/443 bindings produces errors", () => {
@@ -153,11 +118,11 @@ describe("validate compose integration", () => {
     const config = loadFleetConfig(fleetPath);
     const composePath = path.resolve(path.dirname(fleetPath), config.stack.compose_file);
     const compose = loadComposeFile(composePath);
-    const { errors, warnings } = runValidation(config, compose, composePath);
+    const { errors } = runValidation(config, compose);
 
     expect(errors).toHaveLength(2);
-    expect(errors.some((e) => e.includes("80") && e.includes("reserved for Caddy"))).toBe(true);
-    expect(errors.some((e) => e.includes("443") && e.includes("reserved for Caddy"))).toBe(true);
+    expect(errors.some((e: Finding) => e.code === Codes.PORT_80_CONFLICT)).toBe(true);
+    expect(errors.some((e: Finding) => e.code === Codes.PORT_443_CONFLICT)).toBe(true);
   });
 
   it("compose file with other host port bindings produces warnings", () => {
@@ -184,11 +149,11 @@ describe("validate compose integration", () => {
     const config = loadFleetConfig(fleetPath);
     const composePath = path.resolve(path.dirname(fleetPath), config.stack.compose_file);
     const compose = loadComposeFile(composePath);
-    const { errors, warnings } = runValidation(config, compose, composePath);
+    const { errors, warnings } = runValidation(config, compose);
 
     expect(errors).toHaveLength(0);
     expect(warnings).toHaveLength(2);
-    expect(warnings.some((w) => w.includes("8080") && w.includes("may conflict with other stacks"))).toBe(true);
-    expect(warnings.some((w) => w.includes("3000") && w.includes("may conflict with other stacks"))).toBe(true);
+    expect(warnings.some((w: Finding) => w.code === Codes.PORT_EXPOSED && w.message.includes("8080"))).toBe(true);
+    expect(warnings.some((w: Finding) => w.code === Codes.PORT_EXPOSED && w.message.includes("3000"))).toBe(true);
   });
 });
