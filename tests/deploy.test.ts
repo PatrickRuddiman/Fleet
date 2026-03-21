@@ -1,4 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fs from "fs";
+import path from "path";
+import os from "os";
 import type { ExecResult, ExecFn } from "../src/ssh/types";
 import type { FleetState } from "../src/state/types";
 import type { FleetConfig, RouteConfig } from "../src/config/schema";
@@ -6,10 +9,12 @@ import {
   detectHostCollisions,
   bootstrapProxy,
   uploadFile,
+  uploadFileBase64,
   resolveSecrets,
   attachNetworks,
   checkHealth,
   registerRoutes,
+  configHasSecrets,
 } from "../src/deploy/helpers";
 import { deploy } from "../src/deploy/deploy";
 
@@ -224,6 +229,107 @@ describe("uploadFile", () => {
   });
 });
 
+describe("uploadFileBase64", () => {
+  it("should base64-encode content and use atomic write pattern", async () => {
+    let capturedCommand = "";
+    const exec: ExecFn = async (cmd) => {
+      capturedCommand = cmd;
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    await uploadFileBase64(exec, {
+      content: "DB_HOST=localhost\nDB_PORT=5432\n",
+      remotePath: "/opt/fleet/stacks/myapp/.env",
+      permissions: "0600",
+    });
+
+    const expectedBase64 = Buffer.from("DB_HOST=localhost\nDB_PORT=5432\n").toString("base64");
+
+    // Verify the command contains the base64-encoded content
+    expect(capturedCommand).toContain(expectedBase64);
+    // Verify atomic .tmp + mv pattern
+    expect(capturedCommand).toContain(".env.tmp");
+    expect(capturedCommand).toContain("mv");
+    // Verify base64 decoding on the remote side
+    expect(capturedCommand).toContain("base64 -d");
+    // Verify directory creation
+    expect(capturedCommand).toContain("mkdir -p");
+    // Verify permissions
+    expect(capturedCommand).toContain("chmod 0600");
+  });
+
+  it("should handle content with shell metacharacters safely", async () => {
+    let capturedCommand = "";
+    const exec: ExecFn = async (cmd) => {
+      capturedCommand = cmd;
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    const trickyContent = "PASSWORD=p@ss$w0rd!&echo 'hacked'\nFLEET_EOF\nKEY=val\"ue";
+    await uploadFileBase64(exec, {
+      content: trickyContent,
+      remotePath: "/opt/fleet/stacks/myapp/.env",
+      permissions: "0600",
+    });
+
+    const expectedBase64 = Buffer.from(trickyContent).toString("base64");
+
+    // The raw content should NOT appear in the command (it's base64-encoded)
+    expect(capturedCommand).not.toContain("FLEET_EOF");
+    expect(capturedCommand).not.toContain("p@ss$w0rd");
+    // The base64-encoded content should appear
+    expect(capturedCommand).toContain(expectedBase64);
+  });
+
+  it("should omit chmod when permissions are not specified", async () => {
+    let capturedCommand = "";
+    const exec: ExecFn = async (cmd) => {
+      capturedCommand = cmd;
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    await uploadFileBase64(exec, {
+      content: "hello",
+      remotePath: "/opt/fleet/stacks/myapp/config.txt",
+    });
+
+    expect(capturedCommand).not.toContain("chmod");
+    expect(capturedCommand).toContain("base64 -d");
+    expect(capturedCommand).toContain("mv");
+  });
+
+  it("should throw on non-zero exit code", async () => {
+    const exec = mockExec({
+      stdout: "",
+      stderr: "permission denied",
+      code: 1,
+    });
+
+    await expect(
+      uploadFileBase64(exec, {
+        content: "test",
+        remotePath: "/some/path",
+        permissions: "0600",
+      })
+    ).rejects.toThrow("Failed to upload file");
+  });
+
+  it("should include stderr detail in error message", async () => {
+    const exec = mockExec({
+      stdout: "",
+      stderr: "disk full",
+      code: 1,
+    });
+
+    await expect(
+      uploadFileBase64(exec, {
+        content: "test",
+        remotePath: "/some/path",
+      })
+    ).rejects.toThrow("disk full");
+  });
+});
+
 describe("resolveSecrets", () => {
   it("should upload .env file when config has env entries", async () => {
     const config = {
@@ -336,6 +442,97 @@ describe("resolveSecrets", () => {
       resolveSecrets(exec, config, "/opt/fleet/stacks/myapp")
     ).rejects.toThrow("Failed to export secrets via Infisical CLI");
   });
+
+  describe("env.file", () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-test-"));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it("should upload env file content via base64 with correct permissions", async () => {
+      const envContent = "DB_HOST=localhost\nDB_PORT=5432\n";
+      const envFilePath = path.join(tmpDir, ".env.production");
+      fs.writeFileSync(envFilePath, envContent);
+
+      const config = {
+        version: "1" as const,
+        server: { host: "example.com", port: 22, user: "root" },
+        stack: { name: "myapp", compose_file: "compose.yml" },
+        env: { file: ".env.production" },
+        routes: [{ domain: "myapp.example.com", port: 3000, tls: true }],
+      } as FleetConfig;
+
+      const commands: string[] = [];
+      const exec: ExecFn = async (cmd) => {
+        commands.push(cmd);
+        return { stdout: "", stderr: "", code: 0 };
+      };
+
+      await resolveSecrets(exec, config, "/opt/fleet/stacks/myapp", tmpDir);
+
+      expect(commands).toHaveLength(1);
+      // Verify base64 encoding is used
+      const expectedBase64 = Buffer.from(envContent).toString("base64");
+      expect(commands[0]).toContain(expectedBase64);
+      expect(commands[0]).toContain("base64 -d");
+      expect(commands[0]).toContain("/opt/fleet/stacks/myapp/.env");
+      expect(commands[0]).toContain("0600");
+    });
+
+    it("should throw a descriptive error when env file is missing", async () => {
+      const config = {
+        version: "1" as const,
+        server: { host: "example.com", port: 22, user: "root" },
+        stack: { name: "myapp", compose_file: "compose.yml" },
+        env: { file: "nonexistent.env" },
+        routes: [{ domain: "myapp.example.com", port: 3000, tls: true }],
+      } as FleetConfig;
+
+      const exec: ExecFn = async () => ({
+        stdout: "",
+        stderr: "",
+        code: 0,
+      });
+
+      await expect(
+        resolveSecrets(exec, config, "/opt/fleet/stacks/myapp", tmpDir)
+      ).rejects.toThrow("env.file not found");
+
+      // Verify error includes the resolved absolute path
+      await expect(
+        resolveSecrets(exec, config, "/opt/fleet/stacks/myapp", tmpDir)
+      ).rejects.toThrow(path.resolve(tmpDir, "nonexistent.env"));
+    });
+
+    it("should set correct 0600 permissions on uploaded file", async () => {
+      const envContent = "SECRET=value\n";
+      const envFilePath = path.join(tmpDir, "secrets.env");
+      fs.writeFileSync(envFilePath, envContent);
+
+      const config = {
+        version: "1" as const,
+        server: { host: "example.com", port: 22, user: "root" },
+        stack: { name: "myapp", compose_file: "compose.yml" },
+        env: { file: "secrets.env" },
+        routes: [{ domain: "myapp.example.com", port: 3000, tls: true }],
+      } as FleetConfig;
+
+      const commands: string[] = [];
+      const exec: ExecFn = async (cmd) => {
+        commands.push(cmd);
+        return { stdout: "", stderr: "", code: 0 };
+      };
+
+      await resolveSecrets(exec, config, "/opt/fleet/stacks/myapp", tmpDir);
+
+      expect(commands[0]).toContain("chmod 0600");
+    });
+  });
 });
 
 describe("attachNetworks", () => {
@@ -439,6 +636,54 @@ describe("registerRoutes", () => {
     expect(commands[1]).toContain("POST");
     expect(commands[1]).toContain("api.example.com");
     expect(result[0].caddy_id).toBe("mystack__api");
+  });
+});
+
+describe("configHasSecrets", () => {
+  const baseConfig = {
+    version: "1" as const,
+    server: { host: "example.com", port: 22, user: "root" },
+    stack: { name: "myapp", compose_file: "compose.yml" },
+    routes: [{ domain: "myapp.example.com", port: 3000, tls: true }],
+  } as FleetConfig;
+
+  it("should return true when env is an object with a file field", () => {
+    const config = { ...baseConfig, env: { file: ".env.production" } } as FleetConfig;
+    expect(configHasSecrets(config)).toBe(true);
+  });
+
+  it("should return true when env is a non-empty array of key-value pairs", () => {
+    const config = {
+      ...baseConfig,
+      env: [{ key: "DB_HOST", value: "localhost" }],
+    } as FleetConfig;
+    expect(configHasSecrets(config)).toBe(true);
+  });
+
+  it("should return true when infisical is configured via env.infisical", () => {
+    const config = {
+      ...baseConfig,
+      env: { infisical: { token: "tok", project_id: "proj123", environment: "production", path: "/" } },
+    } as FleetConfig;
+    expect(configHasSecrets(config)).toBe(true);
+  });
+
+  it("should return false when no env and no infisical", () => {
+    expect(configHasSecrets(baseConfig)).toBe(false);
+  });
+
+  it("should return false when env is an empty array", () => {
+    const config = { ...baseConfig, env: [] } as FleetConfig;
+    expect(configHasSecrets(config)).toBe(false);
+  });
+
+  it("should return true when both env.file and env.infisical are present", () => {
+    // Note: env can only be one type at a time in the union, so test with infisical in env object
+    const config = {
+      ...baseConfig,
+      env: { infisical: { token: "tok", project_id: "proj123", environment: "staging", path: "/" } },
+    } as FleetConfig;
+    expect(configHasSecrets(config)).toBe(true);
   });
 });
 

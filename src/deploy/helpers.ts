@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { ExecFn } from "../ssh";
 import { FleetState, RouteState } from "../state";
 import { FleetConfig, RouteConfig } from "../config";
@@ -121,16 +123,92 @@ export async function uploadFile(
 }
 
 /**
- * Handles `env.entries` (key-value pairs written directly) and `env.infisical`
- * (remote CLI export) cases, producing a `.env` file with `0600` permissions.
+ * Writes content to a remote path using base64 encoding over SSH exec.
+ * Uses the atomic `.tmp` + `mv` pattern. This avoids heredoc delimiter
+ * and shell metacharacter issues with arbitrary file content.
+ */
+export async function uploadFileBase64(
+  exec: ExecFn,
+  options: UploadFileOptions
+): Promise<void> {
+  const { content, remotePath, permissions } = options;
+  const tmpPath = `${remotePath}.tmp`;
+  const dir = remotePath.substring(0, remotePath.lastIndexOf("/"));
+  const encoded = Buffer.from(content).toString("base64");
+
+  let command = `mkdir -p ${dir} && echo '${encoded}' | base64 -d > ${tmpPath} && mv ${tmpPath} ${remotePath}`;
+
+  if (permissions) {
+    command += ` && chmod ${permissions} ${remotePath}`;
+  }
+
+  const result = await exec(command);
+
+  if (result.code !== 0) {
+    const detail = result.stderr ? ` — ${result.stderr}` : "";
+    throw new Error(
+      `Failed to upload file to ${remotePath}: command exited with code ${result.code}${detail}`
+    );
+  }
+}
+
+/**
+ * Handles `env` entries (key-value pairs), `env.file` (local file upload),
+ * `env.infisical` (remote CLI export), producing a `.env` file with `0600` permissions.
  */
 export async function resolveSecrets(
   exec: ExecFn,
   config: FleetConfig,
-  stackDir: string
+  stackDir: string,
+  configDir?: string
 ): Promise<void> {
-  if (config.env?.entries && config.env.entries.length > 0) {
-    // Handle inline env key-value pairs — format as KEY=VALUE lines
+  if (!config.env) {
+    return;
+  }
+
+  // Handle env.file — read local file and upload via base64
+  if ("file" in config.env) {
+    if (!configDir) {
+      throw new Error(
+        "configDir is required when using env.file"
+      );
+    }
+    const envFilePath = path.resolve(configDir, config.env.file);
+    if (!fs.existsSync(envFilePath)) {
+      throw new Error(
+        `env.file not found: ${config.env.file} (resolved to ${envFilePath})`
+      );
+    }
+    const envContent = fs.readFileSync(envFilePath, "utf-8");
+
+    await uploadFileBase64(exec, {
+      content: envContent,
+      remotePath: `${stackDir}/.env`,
+      permissions: "0600",
+    });
+
+    console.log(`  Uploaded env file (${Buffer.byteLength(envContent)} bytes)`);
+    return;
+  }
+
+  // Handle env as array of key-value pairs
+  if (Array.isArray(config.env)) {
+    if (config.env.length === 0) {
+      return;
+    }
+    const lines = config.env.map((e) => `${e.key}=${e.value}`);
+    const envContent = lines.join("\n") + "\n";
+
+    await uploadFile(exec, {
+      content: envContent,
+      remotePath: `${stackDir}/.env`,
+      permissions: "0600",
+    });
+    return;
+  }
+
+  // Handle env as object with entries and/or infisical
+  if (config.env.entries && config.env.entries.length > 0) {
     const lines = config.env.entries.map((e) => `${e.key}=${e.value}`);
     const envContent = lines.join("\n") + "\n";
 
@@ -139,8 +217,9 @@ export async function resolveSecrets(
       remotePath: `${stackDir}/.env`,
       permissions: "0600",
     });
-  } else if (config.env?.infisical) {
-    // Handle Infisical CLI-based export on the remote server
+  }
+
+  if (config.env.infisical) {
     const { token, project_id, environment, path: secretPath } = config.env.infisical;
 
     const exportCmd = `infisical export --token=${token} --projectId=${project_id} --env=${environment} --path=${secretPath} --format=dotenv > ${stackDir}/.env`;
@@ -159,9 +238,6 @@ export async function resolveSecrets(
         `Failed to set .env file permissions: ${chmodResult.stderr}`
       );
     }
-  } else {
-    // No secrets to resolve
-    return;
   }
 }
 
@@ -270,6 +346,26 @@ export async function registerRoutes(
   }
 
   return routeStates;
+}
+
+/**
+ * Determines whether the config has any secrets source that requires
+ * the `--env-file` flag on `docker compose up`.
+ */
+export function configHasSecrets(config: FleetConfig): boolean {
+  if (!config.env) return false;
+
+  // env is { file: string }
+  if ("file" in config.env) return true;
+
+  // env is array of { key, value }
+  if (Array.isArray(config.env)) return config.env.length > 0;
+
+  // env is { entries?, infisical? }
+  return (
+    (config.env.entries !== undefined && config.env.entries.length > 0) ||
+    config.env.infisical !== undefined
+  );
 }
 
 /**

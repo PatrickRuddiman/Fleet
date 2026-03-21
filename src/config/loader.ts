@@ -27,7 +27,12 @@ export function loadFleetConfig(filePath: string): FleetConfig {
   const config = result.data;
 
   // Expand environment variable reference in infisical token
-  if (config.env?.infisical?.token.startsWith("$")) {
+  if (
+    config.env &&
+    !Array.isArray(config.env) &&
+    "infisical" in config.env &&
+    config.env.infisical?.token.startsWith("$")
+  ) {
     const varName = config.env.infisical.token.slice(1);
     const resolved = process.env[varName];
     if (resolved === undefined) {

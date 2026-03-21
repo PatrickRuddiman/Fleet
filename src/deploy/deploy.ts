@@ -16,6 +16,7 @@ import {
   checkHealth,
   registerRoutes,
   printSummary,
+  configHasSecrets,
 } from "./helpers";
 import { bootstrapInfisicalCli } from "./infisical";
 
@@ -132,11 +133,11 @@ export async function deploy(options: DeployOptions): Promise<void> {
 
     // Step 9: Resolve and upload secrets
     console.log("Step 9: Resolving secrets...");
-    if (config.env?.infisical) {
+    if (config.env && !Array.isArray(config.env) && "infisical" in config.env && config.env.infisical) {
       console.log("  Bootstrapping Infisical CLI...");
       await bootstrapInfisicalCli(exec);
     }
-    await resolveSecrets(exec, config, stackDir);
+    await resolveSecrets(exec, config, stackDir, path.dirname(configPath));
 
     // Step 10: Pull images
     if (!options.skipPull) {
@@ -153,8 +154,7 @@ export async function deploy(options: DeployOptions): Promise<void> {
 
     // Step 11: Start containers
     console.log("Step 11: Starting containers...");
-    const hasSecrets =
-      (config.env?.entries && config.env.entries.length > 0) || config.env?.infisical !== undefined;
+    const hasSecrets = configHasSecrets(config);
     const envFileFlag = hasSecrets ? ` --env-file ${stackDir}/.env` : "";
     const upResult = await exec(
       `docker compose -p ${config.stack.name} -f ${stackDir}/compose.yml${envFileFlag} up -d --remove-orphans`

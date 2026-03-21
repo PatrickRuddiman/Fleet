@@ -54,14 +54,15 @@ describe("fleetConfigSchema", () => {
       };
 
       const result = fleetConfigSchema.parse(fullConfig);
+      const env = result.env as { entries?: { key: string; value: string }[]; infisical?: { project_id: string; token: string; path: string } };
 
       expect(result.server.port).toBe(2222);
       expect(result.server.user).toBe("deploy");
       expect(result.stack.compose_file).toBe("compose.prod.yml");
-      expect(result.env!.entries).toHaveLength(2);
-      expect(result.env!.infisical!.project_id).toBe("proj-123");
-      expect(result.env!.infisical!.token).toBe("$INFISICAL_TOKEN");
-      expect(result.env!.infisical!.path).toBe("/");
+      expect(env.entries).toHaveLength(2);
+      expect(env.infisical!.project_id).toBe("proj-123");
+      expect(env.infisical!.token).toBe("$INFISICAL_TOKEN");
+      expect(env.infisical!.path).toBe("/");
       expect(result.routes[0].acme_email).toBe("admin@example.com");
       expect(result.routes[0].health_check!.timeout_seconds).toBe(60);
     });
@@ -312,10 +313,11 @@ describe("fleetConfigSchema", () => {
         },
       };
       const result = fleetConfigSchema.parse(config);
-      expect(result.env!.infisical!.token).toBe("$INFISICAL_TOKEN");
-      expect(result.env!.infisical!.project_id).toBe("proj-abc-123");
-      expect(result.env!.infisical!.environment).toBe("production");
-      expect(result.env!.infisical!.path).toBe("/backend");
+      const env = result.env as { entries?: unknown[]; infisical?: { token: string; project_id: string; environment: string; path: string } };
+      expect(env.infisical!.token).toBe("$INFISICAL_TOKEN");
+      expect(env.infisical!.project_id).toBe("proj-abc-123");
+      expect(env.infisical!.environment).toBe("production");
+      expect(env.infisical!.path).toBe("/backend");
     });
 
     it("should default infisical path to '/'", () => {
@@ -330,7 +332,8 @@ describe("fleetConfigSchema", () => {
         },
       };
       const result = fleetConfigSchema.parse(config);
-      expect(result.env!.infisical!.path).toBe("/");
+      const env = result.env as { infisical?: { path: string } };
+      expect(env.infisical!.path).toBe("/");
     });
 
     it("should reject infisical block missing token", () => {
@@ -387,7 +390,8 @@ describe("fleetConfigSchema", () => {
         },
       };
       const result = fleetConfigSchema.parse(config);
-      expect(result.env!.infisical!.token).toBe("$MY_SECRET_TOKEN");
+      const env = result.env as { infisical?: { token: string } };
+      expect(env.infisical!.token).toBe("$MY_SECRET_TOKEN");
     });
 
     it("should accept token as a literal string value", () => {
@@ -402,7 +406,8 @@ describe("fleetConfigSchema", () => {
         },
       };
       const result = fleetConfigSchema.parse(config);
-      expect(result.env!.infisical!.token).toBe("st.abc123.xyz789");
+      const env = result.env as { infisical?: { token: string } };
+      expect(env.infisical!.token).toBe("st.abc123.xyz789");
     });
 
     it("should reject non-string token value", () => {
@@ -431,10 +436,11 @@ describe("fleetConfigSchema", () => {
         },
       };
       const result = fleetConfigSchema.parse(config);
-      expect(result.env!.entries).toHaveLength(2);
-      expect(result.env!.entries![0].key).toBe("NODE_ENV");
-      expect(result.env!.entries![0].value).toBe("production");
-      expect(result.env!.infisical).toBeUndefined();
+      const env = result.env as { entries?: { key: string; value: string }[]; infisical?: unknown };
+      expect(env.entries).toHaveLength(2);
+      expect(env.entries![0].key).toBe("NODE_ENV");
+      expect(env.entries![0].value).toBe("production");
+      expect(env.infisical).toBeUndefined();
     });
 
     it("should parse env with both entries and infisical", () => {
@@ -450,14 +456,77 @@ describe("fleetConfigSchema", () => {
         },
       };
       const result = fleetConfigSchema.parse(config);
-      expect(result.env!.entries).toHaveLength(1);
-      expect(result.env!.infisical).toBeDefined();
-      expect(result.env!.infisical!.project_id).toBe("proj-123");
+      const env = result.env as { entries?: unknown[]; infisical?: { project_id: string } };
+      expect(env.entries).toHaveLength(1);
+      expect(env.infisical).toBeDefined();
+      expect(env.infisical!.project_id).toBe("proj-123");
     });
 
     it("should parse config without env field at all", () => {
       const result = fleetConfigSchema.parse(minimalConfig);
       expect(result.env).toBeUndefined();
+    });
+  });
+
+  describe("env field union", () => {
+    it("should accept env as an array of key-value objects", () => {
+      const config = {
+        ...minimalConfig,
+        env: [
+          { key: "NODE_ENV", value: "production" },
+          { key: "PORT", value: "3000" },
+        ],
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(Array.isArray(result.env)).toBe(true);
+      expect(result.env).toHaveLength(2);
+      if (Array.isArray(result.env)) {
+        expect(result.env[0].key).toBe("NODE_ENV");
+        expect(result.env[0].value).toBe("production");
+      }
+    });
+
+    it("should accept env as an object with a file field", () => {
+      const config = {
+        ...minimalConfig,
+        env: { file: ".env.production" },
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(Array.isArray(result.env)).toBe(false);
+      expect(result.env).toEqual({ file: ".env.production" });
+    });
+
+    it("should accept config without env field", () => {
+      const result = fleetConfigSchema.parse(minimalConfig);
+      expect(result.env).toBeUndefined();
+    });
+
+    it("should reject env as a plain string", () => {
+      const config = {
+        ...minimalConfig,
+        env: "not-valid",
+      };
+      const result = fleetConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject env as an array with invalid objects", () => {
+      const config = {
+        ...minimalConfig,
+        env: [{ key: "FOO" }],
+      };
+      const result = fleetConfigSchema.safeParse(config);
+      expect(result.success).toBe(false);
+    });
+
+    it("should accept env as an empty array", () => {
+      const config = {
+        ...minimalConfig,
+        env: [],
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(Array.isArray(result.env)).toBe(true);
+      expect(result.env).toHaveLength(0);
     });
   });
 });
@@ -490,7 +559,8 @@ describe("loadFleetConfig token expansion", () => {
     process.env.MY_INFISICAL_TOKEN = "expanded-secret-token";
     try {
       const config = loadFleetConfig("fleet.yml");
-      expect(config.env!.infisical!.token).toBe("expanded-secret-token");
+      const env = config.env as { infisical?: { token: string } };
+      expect(env.infisical!.token).toBe("expanded-secret-token");
     } finally {
       delete process.env.MY_INFISICAL_TOKEN;
     }
@@ -535,6 +605,7 @@ describe("loadFleetConfig token expansion", () => {
     vi.mocked(fs.readFileSync).mockReturnValue(yamlContent);
 
     const config = loadFleetConfig("fleet.yml");
-    expect(config.env!.infisical!.token).toBe("literal-token-value");
+    const env = config.env as { infisical?: { token: string } };
+    expect(env.infisical!.token).toBe("literal-token-value");
   });
 });
