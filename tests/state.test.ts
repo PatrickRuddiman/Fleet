@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { FleetState, ExecFn, ExecResult } from "../src/state/types";
+import type { FleetState } from "../src/state/types";
+import type { ExecFn, ExecResult } from "../src/ssh";
 import {
   readState,
   writeState,
@@ -51,7 +52,7 @@ describe("readState", () => {
     const exec = mockExec({
       stdout: JSON.stringify(sampleState(), null, 2),
       stderr: "",
-      exitCode: 0,
+      code: 0,
     });
 
     const result = await readState(exec);
@@ -67,7 +68,7 @@ describe("readState", () => {
     const exec = mockExec({
       stdout: "",
       stderr: "cat: /root/.fleet/state.json: No such file or directory",
-      exitCode: 1,
+      code: 1,
     });
 
     const result = await readState(exec);
@@ -83,7 +84,7 @@ describe("readState", () => {
     const exec = mockExec({
       stdout: "",
       stderr: "",
-      exitCode: 0,
+      code: 0,
     });
 
     const result = await readState(exec);
@@ -99,7 +100,7 @@ describe("readState", () => {
     const exec = mockExec({
       stdout: "{ not valid json }",
       stderr: "",
-      exitCode: 0,
+      code: 0,
     });
 
     await expect(readState(exec)).rejects.toThrow("invalid JSON");
@@ -113,7 +114,7 @@ describe("readState", () => {
         stacks: {},
       }),
       stderr: "",
-      exitCode: 0,
+      code: 0,
     });
 
     await expect(readState(exec)).rejects.toThrow(
@@ -129,7 +130,7 @@ describe("readState", () => {
         stacks: {},
       }),
       stderr: "",
-      exitCode: 0,
+      code: 0,
     });
 
     await expect(readState(exec)).rejects.toThrow(
@@ -145,7 +146,7 @@ describe("readState", () => {
         stacks: "not-an-object",
       }),
       stderr: "",
-      exitCode: 0,
+      code: 0,
     });
 
     await expect(readState(exec)).rejects.toThrow(
@@ -159,7 +160,7 @@ describe("writeState", () => {
     let capturedCommand = "";
     const exec: ExecFn = async (command: string) => {
       capturedCommand = command;
-      return { stdout: "", stderr: "", exitCode: 0 };
+      return { stdout: "", stderr: "", code: 0 };
     };
 
     await writeState(exec, sampleState());
@@ -171,7 +172,7 @@ describe("writeState", () => {
     let capturedCommand = "";
     const exec: ExecFn = async (command: string) => {
       capturedCommand = command;
-      return { stdout: "", stderr: "", exitCode: 0 };
+      return { stdout: "", stderr: "", code: 0 };
     };
 
     await writeState(exec, sampleState());
@@ -185,7 +186,7 @@ describe("writeState", () => {
     let capturedCommand = "";
     const exec: ExecFn = async (command: string) => {
       capturedCommand = command;
-      return { stdout: "", stderr: "", exitCode: 0 };
+      return { stdout: "", stderr: "", code: 0 };
     };
 
     await writeState(exec, sampleState());
@@ -197,7 +198,7 @@ describe("writeState", () => {
     const exec = mockExec({
       stdout: "",
       stderr: "permission denied",
-      exitCode: 1,
+      code: 1,
     });
 
     await expect(writeState(exec, sampleState())).rejects.toThrow(
