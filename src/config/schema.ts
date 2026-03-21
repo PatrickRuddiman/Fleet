@@ -32,8 +32,10 @@ export const routeSchema = z.object({
   health_check: healthCheckSchema.optional(),
 });
 
+export const STACK_NAME_REGEX = /^[a-z\d][a-z\d-]*$/;
+
 export const stackSchema = z.object({
-  name: z.string().regex(/^[a-z\d][a-z\d-]*$/),
+  name: z.string().regex(STACK_NAME_REGEX),
   compose_file: z.string().default("docker-compose.yml"),
 });
 
