@@ -1,13 +1,8 @@
 import { Command } from "commander";
 import path from "path";
 import { loadFleetConfig } from "../config";
-import {
-  loadComposeFile,
-  serviceExists,
-  findServicesWithoutImageOrBuild,
-  findHostPortBindings,
-  findReservedPortConflicts,
-} from "../compose";
+import { loadComposeFile } from "../compose";
+import { runAllChecks, Finding } from "../validation";
 
 export function register(program: Command): void {
   program
@@ -42,59 +37,42 @@ export function register(program: Command): void {
         process.exit(1);
       }
 
-      const errors: string[] = [];
-      const warnings: string[] = [];
+      const findings = runAllChecks(config, compose);
 
-      for (const route of config.routes) {
-        if (route.service !== undefined && !serviceExists(compose, route.service)) {
-          errors.push(
-            `Route "${route.domain}" references service "${route.service}" which does not exist in ${composePath}`
-          );
-        }
-      }
-
-      const reservedConflicts = findReservedPortConflicts(compose);
-      for (const binding of reservedConflicts) {
-        errors.push(
-          `Service "${binding.service}" binds host port ${binding.hostPort} which is reserved for Caddy`
-        );
-      }
-
-      const noImageOrBuild = findServicesWithoutImageOrBuild(compose);
-      for (const name of noImageOrBuild) {
-        warnings.push(
-          `Service "${name}" has no "image" or "build" directive`
-        );
-      }
-
-      const allBindings = findHostPortBindings(compose);
-      for (const binding of allBindings) {
-        if (binding.hostPort !== 80 && binding.hostPort !== 443) {
-          warnings.push(
-            `Service "${binding.service}" binds host port ${binding.hostPort} which may conflict with other stacks`
-          );
-        }
-      }
+      const errors = findings.filter(
+        (f: Finding) => f.severity === "error",
+      );
+      const warnings = findings.filter(
+        (f: Finding) => f.severity === "warning",
+      );
 
       if (errors.length > 0) {
         console.error("\nErrors:");
-        for (const err of errors) {
-          console.error(`  ✗ ${err}`);
+        for (const finding of errors) {
+          console.error(
+            `  ✗ [${finding.code}] ${finding.message}`,
+          );
+          console.error(
+            `    Resolution: ${finding.resolution}`,
+          );
         }
       }
 
       if (warnings.length > 0) {
         console.warn("\nWarnings:");
-        for (const warn of warnings) {
-          console.warn(`  ⚠ ${warn}`);
+        for (const finding of warnings) {
+          console.warn(
+            `  ⚠ [${finding.code}] ${finding.message}`,
+          );
+          console.warn(
+            `    Resolution: ${finding.resolution}`,
+          );
         }
       }
 
-      if (errors.length === 0 && warnings.length === 0) {
-        console.log("Configuration is valid.");
-      } else if (errors.length === 0) {
-        console.log("\nConfiguration is valid (with warnings).");
-      }
+      console.log(
+        `\nFound ${errors.length} error(s) and ${warnings.length} warning(s).`,
+      );
 
       if (errors.length > 0) {
         process.exit(1);
