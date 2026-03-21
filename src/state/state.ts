@@ -1,4 +1,5 @@
-import { FleetState, StackState, ExecFn } from "./types";
+import { FleetState, StackState } from "./types";
+import { ExecFn } from "../ssh";
 
 function defaultState(): FleetState {
   return {

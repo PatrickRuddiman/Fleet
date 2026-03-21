@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { FleetState, ExecFn, ExecResult } from "../src/state/types";
+import type { FleetState } from "../src/state/types";
+import type { ExecFn, ExecResult } from "../src/ssh";
 import {
   readState,
   writeState,
