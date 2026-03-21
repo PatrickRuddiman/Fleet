@@ -1,3 +1,5 @@
+export { ExecResult, ExecFn } from "../ssh/types";
+
 export interface RouteState {
   host: string;
   service: string;

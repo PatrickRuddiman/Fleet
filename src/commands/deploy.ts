@@ -1,41 +1,22 @@
 import { Command } from "commander";
-import { loadFleetConfig } from "../config";
-import { createConnection } from "../ssh";
-import { bootstrap } from "../bootstrap";
+import { deploy, DeployOptions } from "../deploy";
 
 export function register(program: Command): void {
   program
     .command("deploy")
     .description("Deploy services")
-    .action(async () => {
-      let config;
-      try {
-        config = loadFleetConfig("./fleet.yml");
-      } catch (error) {
-        if (error instanceof Error) {
-          console.error(error.message);
-        } else {
-          console.error("Failed to load fleet.yml.");
-        }
-        process.exit(1);
-      }
-
-      const acmeEmail = config.routes.find(r => r.acme_email)?.acme_email;
-
-      let connection;
-      try {
-        connection = await createConnection(config.server);
-      } catch (error) {
-        if (error instanceof Error) {
-          console.error(error.message);
-        } else {
-          console.error("Failed to connect to server.");
-        }
-        process.exit(1);
-      }
+    .option("--skip-pull", "Skip pulling images before deploying")
+    .option("--no-health-check", "Skip health checks after deploying")
+    .option("--dry-run", "Preview changes without applying them")
+    .action(async (opts: { skipPull?: boolean; healthCheck?: boolean; dryRun?: boolean }) => {
+      const options: DeployOptions = {
+        skipPull: opts.skipPull ?? false,
+        noHealthCheck: opts.healthCheck === false,
+        dryRun: opts.dryRun ?? false,
+      };
 
       try {
-        await bootstrap(connection.exec, { acme_email: acmeEmail });
+        await deploy(options);
       } catch (error) {
         if (error instanceof Error) {
           console.error(error.message);
@@ -43,8 +24,6 @@ export function register(program: Command): void {
           console.error("Deploy failed with an unknown error.");
         }
         process.exit(1);
-      } finally {
-        await connection.close();
       }
     });
 }
