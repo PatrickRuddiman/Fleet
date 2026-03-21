@@ -1,3 +1,5 @@
+export { ExecResult, ExecFn } from "../ssh/types";
+
 export interface RouteState {
   host: string;
   service: string;
@@ -17,11 +19,3 @@ export interface FleetState {
   caddy_bootstrapped: boolean;
   stacks: Record<string, StackState>;
 }
-
-export interface ExecResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
-
-export type ExecFn = (command: string) => Promise<ExecResult>;
