@@ -1,19 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import fs from "fs";
-import path from "path";
-import os from "os";
-import type { FleetState, StackState } from "../src/state/types";
-
-let tmpDir: string;
-let stateDir: string;
-let stateFile: string;
-
-// We need to re-import the state module for each test so that the module-level
-// STATE_DIR / STATE_FILE constants are recomputed using the mocked homedir.
-let readState: () => FleetState;
-let writeState: (state: FleetState) => void;
-let getStack: (state: FleetState, name: string) => StackState | undefined;
-let removeStack: (state: FleetState, name: string) => FleetState;
+import { describe, it, expect } from "vitest";
+import type { FleetState, ExecFn, ExecResult } from "../src/state/types";
+import {
+  readState,
+  writeState,
+  getStack,
+  removeStack,
+} from "../src/state/state";
 
 function sampleState(): FleetState {
   return {
@@ -50,49 +42,35 @@ function sampleState(): FleetState {
   };
 }
 
-beforeEach(async () => {
-  // Create a fresh temporary directory for each test
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-test-"));
-  stateDir = path.join(tmpDir, ".fleet");
-  stateFile = path.join(stateDir, "state.json");
-
-  // Mock os.homedir() to return our temp dir
-  vi.spyOn(os, "homedir").mockReturnValue(tmpDir);
-
-  // Reset module cache so state.ts re-evaluates its constants with mocked homedir
-  vi.resetModules();
-
-  // Dynamically re-import the state module
-  const stateModule = await import("../src/state/state");
-  readState = stateModule.readState;
-  writeState = stateModule.writeState;
-  getStack = stateModule.getStack;
-  removeStack = stateModule.removeStack;
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-  // Clean up temp directory
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-});
+function mockExec(result: ExecResult): ExecFn {
+  return async (_command: string): Promise<ExecResult> => result;
+}
 
 describe("readState", () => {
-  it("should read a valid state file and produce the correct object", () => {
-    const expected = sampleState();
-    fs.mkdirSync(stateDir, { recursive: true });
-    fs.writeFileSync(stateFile, JSON.stringify(expected, null, 2), "utf-8");
+  it("should return parsed state on successful read", async () => {
+    const exec = mockExec({
+      stdout: JSON.stringify(sampleState(), null, 2),
+      stderr: "",
+      exitCode: 0,
+    });
 
-    const result = readState();
+    const result = await readState(exec);
 
-    expect(result).toEqual(expected);
+    expect(result).toEqual(sampleState());
     expect(result.fleet_root).toBe("/opt/fleet");
     expect(result.caddy_bootstrapped).toBe(true);
     expect(result.stacks.myapp.routes[0].caddy_id).toBe("myapp__web");
     expect(result.stacks.api.routes[0].port).toBe(8080);
   });
 
-  it("should return default initial state when file does not exist", () => {
-    const result = readState();
+  it("should return default state when file does not exist (non-zero exit code)", async () => {
+    const exec = mockExec({
+      stdout: "",
+      stderr: "cat: /root/.fleet/state.json: No such file or directory",
+      exitCode: 1,
+    });
+
+    const result = await readState(exec);
 
     expect(result).toEqual({
       fleet_root: "",
@@ -101,47 +79,130 @@ describe("readState", () => {
     });
   });
 
-  it("should throw a descriptive error on malformed JSON", () => {
-    fs.mkdirSync(stateDir, { recursive: true });
-    fs.writeFileSync(stateFile, "{ not valid json }", "utf-8");
+  it("should return default state when stdout is empty", async () => {
+    const exec = mockExec({
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+    });
 
-    expect(() => readState()).toThrow();
-    expect(() => readState()).toThrow("Invalid JSON");
-    expect(() => readState()).toThrow(stateFile);
+    const result = await readState(exec);
+
+    expect(result).toEqual({
+      fleet_root: "",
+      caddy_bootstrapped: false,
+      stacks: {},
+    });
+  });
+
+  it("should throw on malformed JSON", async () => {
+    const exec = mockExec({
+      stdout: "{ not valid json }",
+      stderr: "",
+      exitCode: 0,
+    });
+
+    await expect(readState(exec)).rejects.toThrow("invalid JSON");
+  });
+
+  it("should throw with descriptive message when fleet_root is not a string", async () => {
+    const exec = mockExec({
+      stdout: JSON.stringify({
+        fleet_root: 123,
+        caddy_bootstrapped: true,
+        stacks: {},
+      }),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    await expect(readState(exec)).rejects.toThrow(
+      "Invalid state file structure"
+    );
+  });
+
+  it("should throw with descriptive message when caddy_bootstrapped is not a boolean", async () => {
+    const exec = mockExec({
+      stdout: JSON.stringify({
+        fleet_root: "",
+        caddy_bootstrapped: "yes",
+        stacks: {},
+      }),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    await expect(readState(exec)).rejects.toThrow(
+      "Invalid state file structure"
+    );
+  });
+
+  it("should throw with descriptive message when stacks is not an object", async () => {
+    const exec = mockExec({
+      stdout: JSON.stringify({
+        fleet_root: "",
+        caddy_bootstrapped: false,
+        stacks: "not-an-object",
+      }),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    await expect(readState(exec)).rejects.toThrow(
+      "Invalid state file structure"
+    );
   });
 });
 
 describe("writeState", () => {
-  it("should create the directory and file when they do not exist", () => {
-    expect(fs.existsSync(stateDir)).toBe(false);
+  it("should produce a command that includes mkdir -p ~/.fleet", async () => {
+    let capturedCommand = "";
+    const exec: ExecFn = async (command: string) => {
+      capturedCommand = command;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
 
-    const state = sampleState();
-    writeState(state);
+    await writeState(exec, sampleState());
 
-    expect(fs.existsSync(stateDir)).toBe(true);
-    expect(fs.existsSync(stateFile)).toBe(true);
-
-    const content = fs.readFileSync(stateFile, "utf-8");
-    const parsed = JSON.parse(content);
-    expect(parsed).toEqual(state);
+    expect(capturedCommand).toContain("mkdir -p ~/.fleet");
   });
 
-  it("should write pretty-printed JSON with 2-space indent", () => {
-    const state = sampleState();
-    writeState(state);
+  it("should produce a command that includes atomic rename via mv", async () => {
+    let capturedCommand = "";
+    const exec: ExecFn = async (command: string) => {
+      capturedCommand = command;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
 
-    const content = fs.readFileSync(stateFile, "utf-8");
-    expect(content).toBe(JSON.stringify(state, null, 2));
+    await writeState(exec, sampleState());
+
+    expect(capturedCommand).toContain(
+      "mv ~/.fleet/state.json.tmp ~/.fleet/state.json"
+    );
   });
-});
 
-describe("round-trip", () => {
-  it("should produce identical data when writing then reading", () => {
-    const state = sampleState();
-    writeState(state);
-    const result = readState();
+  it("should serialize JSON with 2-space indent", async () => {
+    let capturedCommand = "";
+    const exec: ExecFn = async (command: string) => {
+      capturedCommand = command;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
 
-    expect(result).toEqual(state);
+    await writeState(exec, sampleState());
+
+    expect(capturedCommand).toContain(JSON.stringify(sampleState(), null, 2));
+  });
+
+  it("should throw on non-zero exit code", async () => {
+    const exec = mockExec({
+      stdout: "",
+      stderr: "permission denied",
+      exitCode: 1,
+    });
+
+    await expect(writeState(exec, sampleState())).rejects.toThrow(
+      "exited with code 1"
+    );
   });
 });
 
