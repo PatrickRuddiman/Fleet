@@ -1,4 +1,4 @@
-import { ParsedComposeFile, HostPortBinding } from "./types";
+import { ParsedComposeFile, ParsedService, HostPortBinding } from "./types";
 
 export function getServiceNames(compose: ParsedComposeFile): string[] {
   return Object.keys(compose.services);
@@ -39,4 +39,23 @@ export function findReservedPortConflicts(
   return findHostPortBindings(compose).filter(
     (b) => b.hostPort === 80 || b.hostPort === 443,
   );
+}
+
+export function isOneShot(service: ParsedService): boolean {
+  if (service.restart === undefined || service.restart === null) {
+    return false;
+  }
+  if (service.restart === "no") {
+    return true;
+  }
+  if (service.restart.startsWith("on-failure")) {
+    return true;
+  }
+  return false;
+}
+
+export function getOneShots(compose: ParsedComposeFile): string[] {
+  return Object.entries(compose.services)
+    .filter(([_, service]) => isOneShot(service))
+    .map(([name]) => name);
 }
