@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { reloadProxy } from "../reload";
 
 export function register(program: Command): void {
   const proxy = program
@@ -15,7 +16,16 @@ export function register(program: Command): void {
   proxy
     .command("reload")
     .description("Reload proxy configuration")
-    .action(() => {
-      console.log("not yet implemented");
+    .action(async () => {
+      try {
+        await reloadProxy();
+      } catch (error) {
+        if (error instanceof Error) {
+          console.error(error.message);
+        } else {
+          console.error("Reload failed with an unknown error.");
+        }
+        process.exit(1);
+      }
     });
 }
