@@ -85,7 +85,7 @@ export function classifyServices(
       stored.image_digest !== candidate.imageDigest
     ) {
       toDeploy.push(name);
-      reasons[name] = `image changed (${stored.image_digest.substring(0, 7)} → ${candidate.imageDigest!.substring(0, 7)})`;
+      reasons[name] = `image changed (${stored.image_digest!.substring(0, 7)} → ${candidate.imageDigest!.substring(0, 7)})`;
       continue;
     }
 

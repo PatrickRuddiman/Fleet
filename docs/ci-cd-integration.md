@@ -29,7 +29,10 @@ Fleet's `env.file` mode uploads this file to the server, where Docker Compose pi
 
 ## Secrets Management
 
-Fleet supports three modes for managing environment variables and secrets, defined in the `env` field of `fleet.yml`.
+Fleet supports three modes for managing environment variables and secrets,
+defined in the `env` field of `fleet.yml`. See
+[Environment Configuration Shapes](./env-secrets/env-configuration-shapes.md)
+for detailed format specifications.
 
 ### Mode 1: Inline Key-Value Entries
 
@@ -60,7 +63,8 @@ Fleet reads the file, base64-encodes its contents for transfer (avoiding shell m
 
 ### Mode 3: Infisical Integration (`env.infisical`)
 
-For teams using Infisical for secrets management:
+For teams using [Infisical](./env-secrets/infisical-integration.md) for secrets
+management:
 
 ```yaml
 env:
@@ -90,7 +94,11 @@ This command takes no arguments or flags. It requires that `fleet deploy` has be
 
 ## Pipeline Gate: `fleet validate`
 
-`fleet validate` checks your `fleet.yml` and compose file for errors **locally** — it requires **no SSH connection** and makes no remote calls. It should be the **first step** after checkout in any CI pipeline, catching configuration errors before any resources are consumed.
+`fleet validate` checks your `fleet.yml` and compose file for errors **locally**
+— it requires **no SSH connection** and makes no remote calls. It should be the
+**first step** after checkout in any CI pipeline, catching configuration errors
+before any resources are consumed. For full details, see the
+[validate command reference](./validation/validate-command.md).
 
 ### Usage
 
@@ -121,7 +129,10 @@ Validation failures cause the pipeline to exit early, preventing broken configur
 
 ## SSH Key Handling in CI
 
-Fleet connects to the target server over SSH. In CI environments where there is no interactive SSH setup, you have two options.
+Fleet connects to the target server over SSH. In CI environments where there is
+no interactive SSH setup, you have two options. See
+[SSH Authentication](./ssh-connection/authentication.md) for in-depth coverage of
+authentication methods.
 
 ### Option 1: `identity_file` (Recommended for CI)
 
@@ -298,3 +309,23 @@ Fleet v1 is focused on single-server Docker Compose deployments behind Caddy. Th
 - **No web dashboard or UI** — Fleet is a CLI-only tool.
 - **No `fleet.yml` inheritance or composition** — Each `fleet.yml` is a standalone, self-contained configuration file.
 - **No native CI platform integrations** — Fleet is a standard CLI tool that works in any environment where Node.js is available. It has no built-in plugins for GitHub Actions, GitLab CI, or other platforms.
+
+## Related Documentation
+
+- [Deploy Command](./cli-entry-point/deploy-command.md) -- the `fleet deploy`
+  command used in CI pipelines
+- [Validate Command](./validation/validate-command.md) -- pre-flight validation
+  for CI gates
+- [Configuration Loading and Validation](./configuration/loading-and-validation.md)
+  -- how `fleet.yml` is parsed and validated
+- [Configuration Schema Reference](./configuration/schema-reference.md) -- full
+  `fleet.yml` field reference
+- [Environment and Secrets Overview](./env-secrets/overview.md) -- secrets
+  management strategies
+- [Infisical Integration](./env-secrets/infisical-integration.md) -- Infisical
+  token provisioning and CI/CD usage
+- [SSH Authentication](./ssh-connection/authentication.md) -- SSH key and agent
+  authentication
+- [SSH Connection Lifecycle](./ssh-connection/connection-lifecycle.md) -- how
+  connections are managed during CLI commands
+- [Deployment Pipeline](./deployment-pipeline.md) -- the full deploy workflow

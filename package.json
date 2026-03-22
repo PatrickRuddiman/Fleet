@@ -47,6 +47,9 @@
     "@types/node": "^25.5.0",
     "@yao-pkg/pkg": "^5.15.2"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "pkg": {
     "entry": "bin/fleet",
     "targets": [

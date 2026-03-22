@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "filesHash": "550d63465897512c5ddba26d461b7fa266c0498bcfc1d5f94658132ac4f5150d",
+  "results": [
+    {
+      "id": "cli-entry-point",
+      "label": "CLI Entry Point and Command Registration",
+      "type": "vertical",
+      "files": [
+        "cli.ts",
+        "commands/deploy.ts",
+        "commands/init.ts",
+        "commands/validate.ts",
+        "commands/env.ts",
+        "commands/proxy.ts"
+      ],
+      "rationale": "The main CLI program and the primary command registrations that wire user-facing subcommands to core logic."
+    },
+    {
+      "id": "cli-operational-commands",
+      "label": "Operational CLI Commands",
+      "type": "vertical",
+      "files": [
+        "commands/ps.ts",
+        "commands/logs.ts",
+        "commands/restart.ts",
+        "commands/stop.ts",
+        "commands/teardown.ts"
+      ],
+      "rationale": "Day-to-day operational commands for inspecting, restarting, stopping, and tearing down deployed stacks."
+    },
+    {
+      "id": "deployment-pipeline",
+      "label": "Deployment Pipeline",
+      "type": "vertical",
+      "files": [
+        "deploy/deploy.ts",
+        "deploy/helpers.ts",
+        "deploy/types.ts",
+        "deploy/index.ts"
+      ],
+      "rationale": "The core deployment orchestration logic including helper utilities, type definitions, and the public API surface."
+    },
+    {
+      "id": "deployment-classification",
+      "label": "Service Classification and Hashing",
+      "type": "vertical",
+      "files": [
+        "deploy/classify.ts",
+        "deploy/hashes.ts",
+        "deploy/infisical.ts"
+      ],
+      "rationale": "Determines which services need deploy/restart/skip via hash comparison and manages Infisical CLI bootstrapping for secrets."
+    },
+    {
+      "id": "bootstrap",
+      "label": "Server Bootstrap",
+      "type": "vertical",
+      "files": [
+        "bootstrap/bootstrap.ts",
+        "bootstrap/types.ts",
+        "bootstrap/index.ts"
+      ],
+      "rationale": "First-run server initialization that sets up the fleet root directory and bootstraps the Caddy reverse proxy."
+    },
+    {
+      "id": "caddy-proxy",
+      "label": "Caddy Reverse Proxy Configuration",
+      "type": "vertical",
+      "files": [
+        "caddy/commands.ts",
+        "caddy/constants.ts",
+        "caddy/types.ts",
+        "caddy/index.ts",
+        "proxy/compose.ts",
+        "proxy/index.ts"
+      ],
+      "rationale": "All Caddy-related command building, constants, and the Docker Compose generation for the proxy container."
+    },
+    {
+      "id": "proxy-status-reload",
+      "label": "Proxy Status and Route Reload",
+      "type": "vertical",
+      "files": [
+        "proxy-status/proxy-status.ts",
+        "proxy-status/types.ts",
+        "proxy-status/index.ts",
+        "reload/reload.ts",
+        "reload/index.ts"
+      ],
+      "rationale": "Inspecting live proxy state, reconciling routes against expected state, and reloading proxy configuration."
+    },
+    {
+      "id": "configuration",
+      "label": "Fleet Configuration Schema and Loading",
+      "type": "vertical",
+      "files": [
+        "config/schema.ts",
+        "config/loader.ts",
+        "config/index.ts"
+      ],
+      "rationale": "Zod-based schema definitions for fleet.yml, YAML parsing, environment variable expansion, and validation of configuration."
+    },
+    {
+      "id": "compose-parsing",
+      "label": "Docker Compose Parsing and Queries",
+      "type": "vertical",
+      "files": [
+        "compose/parser.ts",
+        "compose/queries.ts",
+        "compose/types.ts",
+        "compose/index.ts"
+      ],
+      "rationale": "Loads and normalizes Docker Compose files into a typed structure and provides query helpers for service inspection."
+    },
+    {
+      "id": "project-init",
+      "label": "Project Initialization",
+      "type": "vertical",
+      "files": [
+        "init/generator.ts",
+        "init/utils.ts",
+        "init/types.ts",
+        "init/index.ts",
+        "commands/init.ts"
+      ],
+      "rationale": "Scaffolds a new Fleet project by detecting compose files, slugifying stack names, and generating fleet.yml."
+    },
+    {
+      "id": "validation",
+      "label": "Configuration and Compose Validation",
+      "type": "vertical",
+      "files": [
+        "validation/fleet-checks.ts",
+        "validation/compose-checks.ts",
+        "validation/types.ts",
+        "validation/index.ts",
+        "commands/validate.ts"
+      ],
+      "rationale": "Pre-deploy validation checks for fleet config and compose files including port conflicts, FQDN format, and service existence."
+    },
+    {
+      "id": "ssh-connection",
+      "label": "SSH and Local Connection Layer",
+      "type": "horizontal",
+      "files": [
+        "ssh/ssh.ts",
+        "ssh/local.ts",
+        "ssh/factory.ts",
+        "ssh/types.ts",
+        "ssh/index.ts"
+      ],
+      "rationale": "Cross-cutting connection abstraction providing remote SSH and local exec with a unified ExecFn interface used by all features."
+    },
+    {
+      "id": "state-management",
+      "label": "Server State Management",
+      "type": "horizontal",
+      "files": [
+        "state/state.ts",
+        "state/types.ts",
+        "state/index.ts"
+      ],
+      "rationale": "Persistent JSON state read/write on the remote server tracking fleet root, stacks, routes, and per-service deployment metadata."
+    },
+    {
+      "id": "fleet-root",
+      "label": "Fleet Root Directory Resolution",
+      "type": "horizontal",
+      "files": [
+        "fleet-root/resolve.ts",
+        "fleet-root/constants.ts",
+        "fleet-root/index.ts"
+      ],
+      "rationale": "Cross-cutting directory resolution logic that determines where Fleet stores proxy and stack files on the remote server."
+    },
+    {
+      "id": "env-secrets",
+      "label": "Environment and Secrets Management",
+      "type": "vertical",
+      "files": [
+        "env/env.ts",
+        "env/index.ts",
+        "deploy/infisical.ts",
+        "commands/env.ts"
+      ],
+      "rationale": "Pushing environment variables and Infisical-managed secrets to deployed stacks on the remote server."
+    },
+    {
+      "id": "stack-lifecycle",
+      "label": "Stack Lifecycle Operations",
+      "type": "vertical",
+      "files": [
+        "stop/stop.ts",
+        "stop/index.ts",
+        "teardown/teardown.ts",
+        "teardown/index.ts",
+        "restart/restart.ts",
+        "restart/index.ts"
+      ],
+      "rationale": "Stop, teardown, and restart operations for managing the lifecycle of deployed stacks and their services."
+    },
+    {
+      "id": "process-status",
+      "label": "Process and Service Status",
+      "type": "vertical",
+      "files": [
+        "ps/ps.ts",
+        "ps/types.ts",
+        "ps/index.ts",
+        "logs/logs.ts",
+        "logs/index.ts"
+      ],
+      "rationale": "Listing running services, parsing docker compose ps output, viewing logs, and formatting status tables."
+    }
+  ]
+}
