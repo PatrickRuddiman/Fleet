@@ -18,6 +18,26 @@ import {
 } from "../src/deploy/helpers";
 import { deploy } from "../src/deploy/deploy";
 
+const { mockDeployStateRef, mockDeployConfigRef } = vi.hoisted(() => ({
+  mockDeployStateRef: {
+    value: {
+      fleet_root: "/opt/fleet",
+      caddy_bootstrapped: true,
+      stacks: {},
+    } as FleetState,
+  },
+  mockDeployConfigRef: {
+    value: {
+      version: "1" as const,
+      server: { host: "example.com", port: 22, user: "root" },
+      stack: { name: "myapp", compose_file: "compose.yml" },
+      routes: [
+        { domain: "myapp.example.com", port: 3000, tls: true },
+      ],
+    } as FleetConfig,
+  },
+}));
+
 // --- Mocks for deploy() integration test (dry-run) ---
 // These are hoisted by vitest and apply to the entire file.
 // They only affect modules used by deploy() directly, not the helper functions
@@ -31,12 +51,7 @@ vi.mock("../src/config", async () => {
   );
   return {
     ...actual,
-    loadFleetConfig: () => ({
-      version: "1",
-      server: { host: "example.com", port: 22, user: "root" },
-      stack: { name: "myapp", compose_file: "compose.yml" },
-      routes: [{ domain: "myapp.example.com", port: 3000, tls: true }],
-    }),
+    loadFleetConfig: () => mockDeployConfigRef.value,
   };
 });
 
@@ -66,11 +81,7 @@ vi.mock("../src/ssh", async () => {
         capturedDeployExecCommands.push(cmd);
         if (cmd.includes("cat") && cmd.includes("state.json")) {
           return {
-            stdout: JSON.stringify({
-              fleet_root: "/opt/fleet",
-              caddy_bootstrapped: true,
-              stacks: {},
-            }),
+            stdout: JSON.stringify(mockDeployStateRef.value),
             stderr: "",
             code: 0,
           };
@@ -710,5 +721,99 @@ describe("deploy dry-run", () => {
       c.includes("docker network connect fleet-proxy")
     );
     expect(hasNetworkConnect).toBe(false);
+  });
+});
+
+describe("deploy collision aborts before proxy bootstrap", () => {
+  beforeEach(() => {
+    capturedDeployExecCommands.length = 0;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    // Reset refs to defaults so other tests are not affected
+    mockDeployStateRef.value = {
+      fleet_root: "/opt/fleet",
+      caddy_bootstrapped: true,
+      stacks: {},
+    };
+    mockDeployConfigRef.value = {
+      version: "1" as const,
+      server: { host: "example.com", port: 22, user: "root" },
+      stack: { name: "myapp", compose_file: "compose.yml" },
+      routes: [{ domain: "myapp.example.com", port: 3000, tls: true }],
+    } as FleetConfig;
+  });
+
+  it("should abort deploy and skip proxy bootstrap when host collision exists", async () => {
+    // Set up state with an existing stack that owns "shared.example.com"
+    mockDeployStateRef.value = {
+      fleet_root: "/opt/fleet",
+      caddy_bootstrapped: false,
+      stacks: {
+        "existing-app": {
+          path: "/opt/fleet/stacks/existing-app",
+          compose_file: "docker-compose.yml",
+          deployed_at: "2025-01-15T10:30:00.000Z",
+          routes: [
+            {
+              host: "shared.example.com",
+              service: "web",
+              port: 3000,
+              caddy_id: "existing-app__web",
+            },
+          ],
+        },
+      },
+    };
+
+    // Configure a different stack that claims the same hostname
+    mockDeployConfigRef.value = {
+      version: "1" as const,
+      server: { host: "example.com", port: 22, user: "root" },
+      stack: { name: "new-app", compose_file: "compose.yml" },
+      routes: [{ domain: "shared.example.com", port: 8080, tls: true }],
+    } as FleetConfig;
+
+    // Intercept process.exit so the test doesn't actually terminate
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((_code?: string | number | null | undefined) => {
+        throw new Error(`process.exit(${_code})`);
+      });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await expect(
+      deploy({ skipPull: false, noHealthCheck: false, dryRun: false })
+    ).rejects.toThrow("process.exit(1)");
+
+    // Verify process.exit was called with code 1
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    // Verify NO bootstrap-related commands were executed.
+    // Bootstrap commands include: docker network create, docker compose (for proxy),
+    // Caddy API calls (docker exec ... curl), and proxy compose file writes.
+    const hasDockerNetworkCreate = capturedDeployExecCommands.some((c) =>
+      c.includes("docker network create")
+    );
+    const hasProxyComposeUp = capturedDeployExecCommands.some(
+      (c) => c.includes("docker compose") && c.includes("up")
+    );
+    const hasCaddyApiCall = capturedDeployExecCommands.some((c) =>
+      c.includes("docker exec")
+    );
+    const hasComposeFileWrite = capturedDeployExecCommands.some(
+      (c) => c.includes("FLEET_EOF") || (c.includes("cat") && c.includes("compose.yml") && !c.includes("state.json"))
+    );
+
+    expect(hasDockerNetworkCreate).toBe(false);
+    expect(hasProxyComposeUp).toBe(false);
+    expect(hasCaddyApiCall).toBe(false);
+    expect(hasComposeFileWrite).toBe(false);
+
+    // The only command that should have been captured is the state.json read
+    expect(capturedDeployExecCommands).toHaveLength(1);
+    expect(capturedDeployExecCommands[0]).toContain("state.json");
   });
 });
