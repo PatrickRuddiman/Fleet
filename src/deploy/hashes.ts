@@ -1,4 +1,6 @@
 import type { ExecFn } from "../ssh";
+import crypto from "crypto";
+import { ParsedService } from "../compose/types";
 
 /**
  * Retrieves the content-addressable SHA256 digest of a Docker image
@@ -59,4 +61,105 @@ export async function computeEnvHash(
   }
 
   return `sha256:${hexDigest}`;
+}
+
+/**
+ * Included fields from ParsedService that affect the runtime definition.
+ * Order here does not matter — keys are sorted before hashing.
+ */
+const INCLUDED_FIELDS: (keyof ParsedService)[] = [
+  "image",
+  "command",
+  "entrypoint",
+  "environment",
+  "ports",
+  "volumes",
+  "labels",
+  "user",
+  "working_dir",
+  "healthcheck",
+];
+
+/**
+ * Recursively removes null, undefined, and empty-string values from
+ * objects and arrays.
+ *
+ * - For objects: omits keys whose cleaned value is null, undefined, or "".
+ * - For arrays: filters out null/undefined/"" elements, then recurses into
+ *   surviving elements to clean nested structures.
+ * - Primitives (numbers, booleans, non-empty strings) pass through unchanged.
+ */
+export function removeNullAndEmpty(obj: unknown): unknown {
+  if (obj === null || obj === undefined || obj === "") {
+    return undefined;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((item) => item !== null && item !== undefined && item !== "")
+      .map((item) => removeNullAndEmpty(item));
+  }
+
+  if (typeof obj === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      const cleaned = removeNullAndEmpty(value);
+      if (cleaned !== undefined && cleaned !== null && cleaned !== "") {
+        result[key] = cleaned;
+      }
+    }
+    return result;
+  }
+
+  return obj;
+}
+
+/**
+ * Recursively sorts object keys alphabetically at every nesting level.
+ * Arrays preserve element order but each element is recursively sorted
+ * if it is an object.
+ */
+export function sortKeysDeep(obj: unknown): unknown {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map((item) => sortKeysDeep(item));
+  }
+
+  if (typeof obj === "object") {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(obj as Record<string, unknown>).sort()) {
+      sorted[key] = sortKeysDeep((obj as Record<string, unknown>)[key]);
+    }
+    return sorted;
+  }
+
+  return obj;
+}
+
+/**
+ * Computes a deterministic SHA256 hash of the runtime-affecting fields
+ * of a ParsedService definition.
+ *
+ * Only the 10 included fields are extracted (omitting keys not present
+ * on the service). The result is piped through removeNullAndEmpty →
+ * sortKeysDeep → JSON.stringify (no extra whitespace), then hashed
+ * with SHA256. Returns "sha256:<hex digest>".
+ */
+export function computeDefinitionHash(service: ParsedService): string {
+  const subset: Record<string, unknown> = {};
+  for (const field of INCLUDED_FIELDS) {
+    if (field in service) {
+      subset[field] = service[field];
+    }
+  }
+
+  const cleaned = removeNullAndEmpty(subset);
+  const sorted = sortKeysDeep(cleaned);
+  const json = JSON.stringify(sorted);
+  const hex = crypto.createHash("sha256").update(json).digest("hex");
+
+  return `sha256:${hex}`;
 }
