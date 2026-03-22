@@ -208,6 +208,30 @@ describe("selective deploy execution (step 11)", () => {
   });
 
   // -----------------------------------------------------------------------
+  // 1b. Force mode prints warning banner
+  // -----------------------------------------------------------------------
+  it("force mode prints the warning banner", async () => {
+    vi.spyOn(process, "exit").mockImplementation(
+      (() => {
+        throw new Error("process.exit");
+      }) as never
+    );
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await runDeploy({
+      skipPull: true,
+      noHealthCheck: true,
+      dryRun: false,
+      force: true,
+    });
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("⚠ Force mode")
+    );
+  });
+
+  // -----------------------------------------------------------------------
   // 2. Selective mode runs per-service `up -d <service>` for toDeploy
   // -----------------------------------------------------------------------
   it("selective mode runs per-service docker compose up -d for toDeploy services", async () => {

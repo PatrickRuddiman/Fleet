@@ -801,7 +801,7 @@ describe("deploy dry-run", () => {
   it("should exit after step 5 without executing steps 6-16", async () => {
     capturedDeployExecCommands.length = 0;
 
-    await deploy({ skipPull: false, noHealthCheck: false, dryRun: true });
+    await deploy({ skipPull: false, noHealthCheck: false, dryRun: true, force: false });
 
     // Step 6 would create stack directory: mkdir -p /opt/fleet/stacks/myapp
     const hasStackMkdir = capturedDeployExecCommands.some(
@@ -820,6 +820,52 @@ describe("deploy dry-run", () => {
       c.includes("docker network connect fleet-proxy")
     );
     expect(hasNetworkConnect).toBe(false);
+  });
+});
+
+describe("deploy force mode warning banner", () => {
+  beforeEach(() => {
+    capturedDeployExecCommands.length = 0;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("should print the force mode warning banner when force is true", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((_code?: string | number | null | undefined) => {
+        throw new Error(`process.exit(${_code})`);
+      });
+
+    try {
+      await deploy({ skipPull: true, noHealthCheck: true, dryRun: false, force: true });
+    } catch {
+      // deploy may call process.exit(1) which throws; ignore
+    }
+
+    expect(logSpy).toHaveBeenCalledWith("⚠ Force mode — all services will be redeployed");
+  });
+
+  it("should not print the force mode warning banner when force is false", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((_code?: string | number | null | undefined) => {
+        throw new Error(`process.exit(${_code})`);
+      });
+
+    try {
+      await deploy({ skipPull: true, noHealthCheck: true, dryRun: false, force: false });
+    } catch {
+      // deploy may call process.exit(1) which throws; ignore
+    }
+
+    expect(logSpy).not.toHaveBeenCalledWith("⚠ Force mode — all services will be redeployed");
   });
 });
 
@@ -884,7 +930,7 @@ describe("deploy collision aborts before proxy bootstrap", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
 
     await expect(
-      deploy({ skipPull: false, noHealthCheck: false, dryRun: false })
+      deploy({ skipPull: false, noHealthCheck: false, dryRun: false, force: false })
     ).rejects.toThrow("process.exit(1)");
 
     // Verify process.exit was called with code 1
