@@ -8,11 +8,13 @@ export function register(program: Command): void {
     .option("--skip-pull", "Skip pulling images before deploying")
     .option("--no-health-check", "Skip health checks after deploying")
     .option("--dry-run", "Preview changes without applying them")
-    .action(async (opts: { skipPull?: boolean; healthCheck?: boolean; dryRun?: boolean }) => {
+    .option("-f, --force", "Force pull and redeploy all services")
+    .action(async (opts: { skipPull?: boolean; healthCheck?: boolean; dryRun?: boolean; force?: boolean }) => {
       const options: DeployOptions = {
         skipPull: opts.skipPull ?? false,
         noHealthCheck: opts.healthCheck === false,
         dryRun: opts.dryRun ?? false,
+        force: opts.force ?? false,
       };
 
       try {

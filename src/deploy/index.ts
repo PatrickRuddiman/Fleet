@@ -10,6 +10,8 @@ export {
   registerRoutes,
   printSummary,
   configHasSecrets,
+  hasFloatingTag,
+  pullSelectiveImages,
 } from "./helpers";
 export { deploy } from "./deploy";
 export { bootstrapInfisicalCli } from "./infisical";
