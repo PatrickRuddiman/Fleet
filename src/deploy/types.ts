@@ -7,6 +7,7 @@ export interface DeployOptions {
   skipPull: boolean;
   noHealthCheck: boolean;
   dryRun: boolean;
+  force: boolean;
 }
 
 export interface DeployContext {

@@ -15,6 +15,7 @@ import {
   checkHealth,
   registerRoutes,
   configHasSecrets,
+  hasFloatingTag,
 } from "../src/deploy/helpers";
 import { deploy } from "../src/deploy/deploy";
 
@@ -734,6 +735,65 @@ describe("configHasSecrets", () => {
       env: { infisical: { token: "tok", project_id: "proj123", environment: "staging", path: "/" } },
     } as FleetConfig;
     expect(configHasSecrets(config)).toBe(true);
+  });
+});
+
+describe("hasFloatingTag", () => {
+  it("should return true when image is undefined", () => {
+    expect(hasFloatingTag(undefined)).toBe(true);
+  });
+
+  it("should return true when image is empty string", () => {
+    expect(hasFloatingTag("")).toBe(true);
+  });
+
+  it("should return true when image has no tag (defaults to latest)", () => {
+    expect(hasFloatingTag("nginx")).toBe(true);
+  });
+
+  it("should return true when image has explicit :latest tag", () => {
+    expect(hasFloatingTag("nginx:latest")).toBe(true);
+  });
+
+  it("should return true for registry image with no tag", () => {
+    expect(hasFloatingTag("ghcr.io/org/repo")).toBe(true);
+  });
+
+  it("should return true for registry image with :latest tag", () => {
+    expect(hasFloatingTag("myregistry.com/myapp:latest")).toBe(true);
+  });
+
+  it("should return true when image contains @sha256: digest", () => {
+    expect(hasFloatingTag("nginx@sha256:abc123def456")).toBe(true);
+  });
+
+  it("should return true for registry image with @sha256: digest", () => {
+    expect(hasFloatingTag("ghcr.io/org/repo@sha256:abc123")).toBe(true);
+  });
+
+  it("should return false when image has a pinned non-latest tag", () => {
+    expect(hasFloatingTag("nginx:1.25")).toBe(false);
+  });
+
+  it("should return false for registry image with pinned tag", () => {
+    expect(hasFloatingTag("ghcr.io/org/repo:v2.0.0")).toBe(false);
+  });
+
+  it("should return false for image with specific version tag", () => {
+    expect(hasFloatingTag("node:20-alpine")).toBe(false);
+  });
+
+  it("should not confuse registry port with a tag", () => {
+    // myregistry.com:5000/myapp has no tag — should be floating
+    expect(hasFloatingTag("myregistry.com:5000/myapp")).toBe(true);
+  });
+
+  it("should not confuse registry port when image has a pinned tag", () => {
+    expect(hasFloatingTag("myregistry.com:5000/myapp:1.0")).toBe(false);
+  });
+
+  it("should handle registry with port and :latest tag", () => {
+    expect(hasFloatingTag("myregistry.com:5000/myapp:latest")).toBe(true);
   });
 });
 

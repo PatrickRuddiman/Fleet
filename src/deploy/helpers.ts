@@ -3,7 +3,7 @@ import path from "path";
 import { ExecFn } from "../ssh";
 import { FleetState, RouteState } from "../state";
 import { FleetConfig, RouteConfig } from "../config";
-import { getServiceNames } from "../compose";
+import { getServiceNames, ParsedComposeFile, isOneShot } from "../compose";
 import { resolveFleetRoot, PROXY_DIR } from "../fleet-root";
 import { writeProxyCompose } from "../proxy";
 import {
@@ -13,6 +13,7 @@ import {
   buildCaddyId,
 } from "../caddy";
 import { HostCollision, UploadFileOptions } from "./types";
+import { getImageDigest } from "./hashes";
 
 /**
  * Compares incoming routes against all stacks in state, flagging conflicts
@@ -417,4 +418,100 @@ export async function printSummary(
   }
 
   console.log("\nDeploy complete.");
+}
+
+/**
+ * Determines whether a Docker image reference uses a "floating" tag —
+ * one that may resolve to different content over time.
+ *
+ * Returns `true` if the image has no tag (defaults to `latest`),
+ * an explicit `:latest` tag, or a digest-based `@sha256:` reference.
+ */
+export function hasFloatingTag(image: string | undefined): boolean {
+  if (!image) {
+    return true;
+  }
+
+  if (image.includes("@sha256:")) {
+    return true;
+  }
+
+  // Strip any @digest suffix (e.g. image@sha256:... already handled above,
+  // but guard against other @ references)
+  const ref = image.split("@")[0];
+
+  // Find the portion after the last '/' to avoid confusing
+  // a registry port (e.g. registry:5000/app) with a tag.
+  const lastSlash = ref.lastIndexOf("/");
+  const afterSlash = lastSlash >= 0 ? ref.substring(lastSlash + 1) : ref;
+
+  const colonIndex = afterSlash.lastIndexOf(":");
+  if (colonIndex < 0) {
+    // No tag specified — Docker defaults to latest
+    return true;
+  }
+
+  const tag = afterSlash.substring(colonIndex + 1);
+  return tag === "latest";
+}
+
+/**
+ * Pulls Docker images selectively based on deployment needs.
+ *
+ * In force mode, pulls all images at once. Otherwise, iterates services
+ * and pulls those in the toDeploy list, one-shots, or floating-tag
+ * services while skipping and logging others.
+ */
+export async function pullSelectiveImages(
+  exec: ExecFn,
+  compose: ParsedComposeFile,
+  stackName: string,
+  stackDir: string,
+  toDeploy: string[],
+  force: boolean
+): Promise<string[]> {
+  const composePath = `${stackDir}/compose.yml`;
+  const toDeploySet = new Set(toDeploy);
+
+  // Force mode: pull all images at once
+  if (force) {
+    const result = await exec(
+      `docker compose -p ${stackName} -f ${composePath} pull`
+    );
+    if (result.code !== 0) {
+      throw new Error(`Failed to pull images: ${result.stderr}`);
+    }
+    return Object.keys(compose.services);
+  }
+
+  // Selective mode: iterate services
+  const pulled: string[] = [];
+
+  for (const [serviceName, service] of Object.entries(compose.services)) {
+    const oneShot = isOneShot(service);
+    const floating = hasFloatingTag(service.image);
+    const inToDeploy = toDeploySet.has(serviceName);
+
+    if (inToDeploy || oneShot || floating) {
+      const result = await exec(
+        `docker compose -p ${stackName} -f ${composePath} pull ${serviceName}`
+      );
+      if (result.code !== 0) {
+        throw new Error(
+          `Failed to pull image for service ${serviceName}: ${result.stderr}`
+        );
+      }
+
+      // For floating-tag services, retrieve the post-pull digest
+      if (floating && service.image) {
+        await getImageDigest(exec, service.image);
+      }
+
+      pulled.push(serviceName);
+    } else {
+      console.log(`  ⊘ ${serviceName} — skipped pull (no changes detected)`);
+    }
+  }
+
+  return pulled;
 }

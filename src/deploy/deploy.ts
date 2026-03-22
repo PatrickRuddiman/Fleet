@@ -17,6 +17,7 @@ import {
   registerRoutes,
   printSummary,
   configHasSecrets,
+  pullSelectiveImages,
 } from "./helpers";
 import { bootstrapInfisicalCli } from "./infisical";
 
@@ -142,12 +143,14 @@ export async function deploy(options: DeployOptions): Promise<void> {
     // Step 10: Pull images
     if (!options.skipPull) {
       console.log("Step 10: Pulling images...");
-      const pullResult = await exec(
-        `docker compose -p ${config.stack.name} -f ${stackDir}/compose.yml pull`
+      await pullSelectiveImages(
+        exec,
+        compose,
+        config.stack.name,
+        stackDir,
+        getServiceNames(compose),
+        options.force
       );
-      if (pullResult.code !== 0) {
-        throw new Error(`Failed to pull images: ${pullResult.stderr}`);
-      }
     } else {
       console.log("Step 10: Skipping image pull (--skip-pull).");
     }
