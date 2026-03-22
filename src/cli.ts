@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import path from "path";
 
 import { register as registerInit } from "./commands/init";
 import { register as registerValidate } from "./commands/validate";
@@ -14,9 +15,11 @@ import { register as registerProxy } from "./commands/proxy";
 export function createProgram(): Command {
   const program = new Command();
 
+  const packageJson = require(path.join(__dirname, "..", "package.json"));
+
   program
     .name("fleet")
-    .version("0.1.0")
+    .version(packageJson.version)
     .description("A TypeScript CLI tool for managing deployments");
 
   registerInit(program);

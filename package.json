@@ -1,8 +1,29 @@
 {
-  "name": "fleet",
+  "name": "@fleetdeploy/cli",
   "version": "0.1.0",
-  "private": true,
   "description": "A TypeScript CLI tool for managing deployments",
+  "files": [
+    "dist/",
+    "bin/"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PatrickRuddiman/Fleet.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "cli",
+    "deploy",
+    "docker",
+    "docker-compose",
+    "caddy",
+    "reverse-proxy",
+    "fleet"
+  ],
+  "homepage": "https://github.com/PatrickRuddiman/Fleet#readme",
   "bin": {
     "fleet": "bin/fleet"
   },
@@ -10,7 +31,8 @@
     "build": "tsc",
     "dev": "ts-node src/cli.ts",
     "test": "vitest run",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "build:binaries": "pkg . --out-path releases"
   },
   "dependencies": {
     "commander": "^14.0.3",
@@ -22,6 +44,19 @@
     "typescript": "^5.9.3",
     "ts-node": "^10.9.2",
     "vitest": "^4.1.0",
-    "@types/node": "^25.5.0"
+    "@types/node": "^25.5.0",
+    "@yao-pkg/pkg": "^5.15.2"
+  },
+  "pkg": {
+    "entry": "bin/fleet",
+    "targets": [
+      "node18-linux-x64",
+      "node18-macos-x64",
+      "node18-macos-arm64"
+    ],
+    "assets": [
+      "dist/**/*"
+    ],
+    "outputPath": "releases"
   }
 }
