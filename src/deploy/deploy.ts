@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
 import { loadFleetConfig } from "../config";
-import { loadComposeFile, getServiceNames } from "../compose";
+import { loadComposeFile, getServiceNames, isOneShot } from "../compose";
 import { runAllChecks } from "../validation";
 import { createConnection, Connection } from "../ssh";
-import { readState, writeState, StackState } from "../state";
+import { readState, writeState, StackState, ServiceState } from "../state";
 import { STACKS_DIR } from "../fleet-root";
 import { DeployOptions } from "./types";
 import {
@@ -143,12 +143,13 @@ export async function deploy(options: DeployOptions): Promise<void> {
     }
     await resolveSecrets(exec, config, stackDir, path.dirname(configPath));
 
-    // Classify services for selective deploy
-    console.log("Classifying services...");
+    // Step 10: Classify services for selective deploy
+    console.log("Step 10: Classifying services for selective deploy...");
     let classification: ServiceClassification;
     let candidateHashes: Record<string, CandidateHashes> = {};
+    let currentEnvHash: string | null = null;
+    const existingStackState = state.stacks[config.stack.name];
     if (!options.force) {
-      const stackState = state.stacks[config.stack.name];
       for (const [name, service] of Object.entries(compose.services)) {
         const definitionHash = computeDefinitionHash(service);
         const imageDigest = service.image
@@ -156,12 +157,12 @@ export async function deploy(options: DeployOptions): Promise<void> {
           : null;
         candidateHashes[name] = { definitionHash, imageDigest };
       }
-      const currentEnvHash = await computeEnvHash(exec, `${stackDir}/.env`);
+      currentEnvHash = await computeEnvHash(exec, `${stackDir}/.env`);
       const envHashChanged =
-        stackState?.env_hash != null &&
+        existingStackState?.env_hash != null &&
         currentEnvHash != null &&
-        stackState.env_hash !== currentEnvHash;
-      const effectiveStackState: StackState = stackState ?? {
+        existingStackState.env_hash !== currentEnvHash;
+      const effectiveStackState: StackState = existingStackState ?? {
         path: stackDir,
         compose_file: config.stack.compose_file,
         deployed_at: "",
@@ -191,9 +192,9 @@ export async function deploy(options: DeployOptions): Promise<void> {
       console.log("  Force mode: all services will be deployed.");
     }
 
-    // Step 10: Pull images
+    // Step 11: Pull images
     if (!options.skipPull) {
-      console.log("Step 10: Pulling images...");
+      console.log("Step 11: Pulling images...");
       await pullSelectiveImages(
         exec,
         compose,
@@ -203,14 +204,14 @@ export async function deploy(options: DeployOptions): Promise<void> {
         options.force
       );
     } else {
-      console.log("Step 10: Skipping image pull (--skip-pull).");
+      console.log("Step 11: Skipping image pull (--skip-pull).");
     }
 
-    // Step 11: Start containers
+    // Step 12: Start containers
     // Future Swarm mode equivalents (V1.5):
     //   docker compose up -d <service>  →  docker service update --image <image> <stack>_<service>
     //   docker compose restart <service> →  docker service update --force <stack>_<service>
-    console.log("Step 11: Starting containers...");
+    console.log("Step 12: Starting containers...");
     const hasSecrets = configHasSecrets(config);
     const envFileFlag = hasSecrets ? ` --env-file ${stackDir}/.env` : "";
     const remoteComposePath = `${stackDir}/compose.yml`;
@@ -262,8 +263,55 @@ export async function deploy(options: DeployOptions): Promise<void> {
       }
     }
 
-    // Step 12: Attach containers to fleet-proxy network
-    console.log("Step 12: Attaching containers to fleet-proxy network...");
+    // --- Post-deploy state computation ---
+    // Build per-service ServiceState records using classification and candidateHashes
+    // (candidateHashes already updated with post-deploy image digests above)
+    const now = new Date().toISOString();
+    const services: Record<string, ServiceState> = {};
+    const toDeploySet = new Set(classification.toDeploy);
+    const toRestartSet = new Set(classification.toRestart);
+
+    for (const [name, service] of Object.entries(compose.services)) {
+      const candidate = candidateHashes[name];
+
+      if (toDeploySet.has(name) || toRestartSet.has(name)) {
+        // Deployed or restarted: fresh state
+        services[name] = {
+          image: service.image ?? "",
+          definition_hash: candidate?.definitionHash ?? "",
+          image_digest: candidate?.imageDigest ?? "",
+          env_hash: currentEnvHash ?? "",
+          deployed_at: now,
+          skipped_at: null,
+          one_shot: isOneShot(service),
+          status: "deployed",
+        };
+      } else {
+        // Skipped: preserve existing state, update skipped_at
+        const existing = existingStackState?.services?.[name];
+        if (existing) {
+          services[name] = {
+            ...existing,
+            skipped_at: now,
+          };
+        } else {
+          // First deploy, no prior state — treat as fresh
+          services[name] = {
+            image: service.image ?? "",
+            definition_hash: candidate?.definitionHash ?? "",
+            image_digest: candidate?.imageDigest ?? "",
+            env_hash: currentEnvHash ?? "",
+            deployed_at: now,
+            skipped_at: null,
+            one_shot: isOneShot(service),
+            status: "deployed",
+          };
+        }
+      }
+    }
+
+    // Step 13: Attach containers to fleet-proxy network
+    console.log("Step 13: Attaching containers to fleet-proxy network...");
     const routedServices = config.routes
       .map((r) => r.service)
       .filter((s): s is string => s !== undefined);
@@ -274,9 +322,9 @@ export async function deploy(options: DeployOptions): Promise<void> {
     ];
     await attachNetworks(exec, config.stack.name, uniqueServices);
 
-    // Step 13: Health checks
+    // Step 14: Health checks
     if (!options.noHealthCheck) {
-      console.log("Step 13: Running health checks...");
+      console.log("Step 14: Running health checks...");
       for (const route of config.routes) {
         if (route.health_check) {
           const serviceName =
@@ -294,24 +342,26 @@ export async function deploy(options: DeployOptions): Promise<void> {
         }
       }
     } else {
-      console.log("Step 13: Skipping health checks (--no-health-check).");
+      console.log("Step 14: Skipping health checks (--no-health-check).");
     }
 
-    // Step 14: Register Caddy routes
-    console.log("Step 14: Registering routes with Caddy...");
+    // Step 15: Register Caddy routes
+    console.log("Step 15: Registering routes with Caddy...");
     const routeStates = await registerRoutes(
       exec,
       config.stack.name,
       config.routes
     );
 
-    // Step 15: Write state
-    console.log("Step 15: Writing server state...");
+    // Step 16: Write state
+    console.log("Step 16: Writing server state...");
     const stackState: StackState = {
       path: stackDir,
       compose_file: config.stack.compose_file,
       deployed_at: new Date().toISOString(),
       routes: routeStates,
+      services,
+      env_hash: currentEnvHash ?? undefined,
     };
     state = {
       ...state,
@@ -323,8 +373,8 @@ export async function deploy(options: DeployOptions): Promise<void> {
     };
     await writeState(exec, state);
 
-    // Step 16: Print summary
-    console.log("Step 16: Printing summary...");
+    // Step 17: Print summary
+    console.log("Step 17: Printing summary...");
     await printSummary(
       exec,
       config.stack.name,
