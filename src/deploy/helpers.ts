@@ -270,27 +270,36 @@ export async function attachNetworks(
 }
 
 /**
- * Polls an HTTP endpoint until 2xx or timeout, returning a warning on timeout
- * rather than failing.
+ * Polls a container's health endpoint directly via Docker exec until 2xx or
+ * timeout, returning a warning on timeout rather than failing.
  */
 export async function checkHealth(
   exec: ExecFn,
-  domain: string,
+  stackName: string,
+  serviceName: string,
+  port: number,
   healthCheck: { path: string; timeout_seconds: number; interval_seconds: number }
 ): Promise<string | null> {
-  const url = `https://${domain}${healthCheck.path}`;
+  const containerName = `${stackName}-${serviceName}-1`;
   const maxAttempts = Math.ceil(
     healthCheck.timeout_seconds / healthCheck.interval_seconds
   );
+  let lastStatus = "no response";
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const result = await exec(
-      `curl -s -o /dev/null -w "%{http_code}" --insecure ${url}`
+      `docker exec ${containerName} curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}${healthCheck.path}`
     );
-    const statusCode = parseInt(result.stdout.trim(), 10);
 
-    if (statusCode >= 200 && statusCode < 300) {
-      return null; // healthy, no warning
+    if (result.code !== 0) {
+      lastStatus = result.stderr.trim() || `exit code ${result.code}`;
+    } else {
+      const statusCode = parseInt(result.stdout.trim(), 10);
+      lastStatus = `HTTP ${statusCode}`;
+
+      if (statusCode >= 200 && statusCode < 300) {
+        return null; // healthy, no warning
+      }
     }
 
     if (attempt < maxAttempts) {
@@ -298,7 +307,7 @@ export async function checkHealth(
     }
   }
 
-  return `Health check timed out for ${domain}${healthCheck.path} after ${healthCheck.timeout_seconds}s`;
+  return `Health check timed out for ${containerName}${healthCheck.path} after ${healthCheck.timeout_seconds}s (last status: ${lastStatus})`;
 }
 
 /**
