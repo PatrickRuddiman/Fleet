@@ -21,8 +21,8 @@ import {
 } from "./helpers";
 import { bootstrapInfisicalCli } from "./infisical";
 import { classifyServices } from "./classify";
-import type { CandidateHashes } from "./classify";
-import { computeDefinitionHash, getImageDigest, computeEnvHash } from "./hashes";
+import type { CandidateHashes, ServiceClassification } from "./classify";
+import { computeDefinitionHash, computeEnvHash, getImageDigest } from "./hashes";
 
 export async function deploy(options: DeployOptions): Promise<void> {
   const warnings: string[] = [];
@@ -143,22 +143,54 @@ export async function deploy(options: DeployOptions): Promise<void> {
     }
     await resolveSecrets(exec, config, stackDir, path.dirname(configPath));
 
-    // Step 10: Compute hashes for selective deploy
-    console.log("Step 10: Computing hashes for selective deploy...");
-    const candidateHashes: Record<string, CandidateHashes> = {};
-    for (const [serviceName, service] of Object.entries(compose.services)) {
-      candidateHashes[serviceName] = {
-        definitionHash: computeDefinitionHash(service),
-        imageDigest: null,
-      };
-    }
-
-    const newEnvHash = configHasSecrets(config)
-      ? await computeEnvHash(exec, stackDir + "/.env")
-      : null;
-
+    // Step 10: Classify services for selective deploy
+    console.log("Step 10: Classifying services for selective deploy...");
+    let classification: ServiceClassification;
+    let candidateHashes: Record<string, CandidateHashes> = {};
+    let currentEnvHash: string | null = null;
     const existingStackState = state.stacks[config.stack.name];
-    const envHashChanged = newEnvHash !== existingStackState?.env_hash;
+    if (!options.force) {
+      for (const [name, service] of Object.entries(compose.services)) {
+        const definitionHash = computeDefinitionHash(service);
+        const imageDigest = service.image
+          ? await getImageDigest(exec, service.image)
+          : null;
+        candidateHashes[name] = { definitionHash, imageDigest };
+      }
+      currentEnvHash = await computeEnvHash(exec, `${stackDir}/.env`);
+      const envHashChanged =
+        existingStackState?.env_hash != null &&
+        currentEnvHash != null &&
+        existingStackState.env_hash !== currentEnvHash;
+      const effectiveStackState: StackState = existingStackState ?? {
+        path: stackDir,
+        compose_file: config.stack.compose_file,
+        deployed_at: "",
+        routes: [],
+      };
+      classification = classifyServices(
+        compose,
+        effectiveStackState,
+        candidateHashes,
+        envHashChanged,
+      );
+      if (classification.toDeploy.length > 0) {
+        console.log(`  Deploy: ${classification.toDeploy.join(", ")}`);
+      }
+      if (classification.toRestart.length > 0) {
+        console.log(`  Restart: ${classification.toRestart.join(", ")}`);
+      }
+      if (classification.toSkip.length > 0) {
+        console.log(`  Skip: ${classification.toSkip.join(", ")}`);
+      }
+    } else {
+      classification = {
+        toDeploy: getServiceNames(compose),
+        toRestart: [],
+        toSkip: [],
+      };
+      console.log("  Force mode: all services will be deployed.");
+    }
 
     // Step 11: Pull images
     if (!options.skipPull) {
@@ -168,7 +200,7 @@ export async function deploy(options: DeployOptions): Promise<void> {
         compose,
         config.stack.name,
         stackDir,
-        getServiceNames(compose),
+        classification.toDeploy,
         options.force
       );
     } else {
@@ -176,61 +208,78 @@ export async function deploy(options: DeployOptions): Promise<void> {
     }
 
     // Step 12: Start containers
+    // Future Swarm mode equivalents (V1.5):
+    //   docker compose up -d <service>  →  docker service update --image <image> <stack>_<service>
+    //   docker compose restart <service> →  docker service update --force <stack>_<service>
     console.log("Step 12: Starting containers...");
     const hasSecrets = configHasSecrets(config);
     const envFileFlag = hasSecrets ? ` --env-file ${stackDir}/.env` : "";
-    const upResult = await exec(
-      `docker compose -p ${config.stack.name} -f ${stackDir}/compose.yml${envFileFlag} up -d --remove-orphans`
-    );
-    if (upResult.code !== 0) {
-      throw new Error(`Failed to start containers: ${upResult.stderr}`);
+    const remoteComposePath = `${stackDir}/compose.yml`;
+
+    if (options.force) {
+      // Force mode: deploy all services at once (preserve existing behavior)
+      const upResult = await exec(
+        `docker compose -p ${config.stack.name} -f ${remoteComposePath}${envFileFlag} up -d --remove-orphans`
+      );
+      if (upResult.code !== 0) {
+        throw new Error(`Failed to start containers: ${upResult.stderr}`);
+      }
+    } else {
+      // Selective mode: deploy, restart, or skip each service based on classification
+      for (const service of classification.toDeploy) {
+        const upResult = await exec(
+          `docker compose -p ${config.stack.name} -f ${remoteComposePath}${envFileFlag} up -d ${service}`
+        );
+        if (upResult.code !== 0) {
+          throw new Error(`Failed to deploy service ${service}: ${upResult.stderr}`);
+        }
+      }
+
+      for (const service of classification.toRestart) {
+        const restartResult = await exec(
+          `docker compose -p ${config.stack.name} -f ${remoteComposePath} restart ${service}`
+        );
+        if (restartResult.code !== 0) {
+          throw new Error(`Failed to restart service ${service}: ${restartResult.stderr}`);
+        }
+      }
+
+      for (const service of classification.toSkip) {
+        console.log(`  ⊘ ${service} — no changes detected, skipped`);
+      }
+    }
+
+    // Post-deploy digest capture: record actual running image digests for deployed services
+    for (const service of classification.toDeploy) {
+      const svc = compose.services[service];
+      if (svc?.image) {
+        const digest = await getImageDigest(exec, svc.image);
+        if (digest !== null) {
+          candidateHashes[service] = {
+            definitionHash: candidateHashes[service]?.definitionHash ?? "",
+            imageDigest: digest,
+          };
+        }
+      }
     }
 
     // --- Post-deploy state computation ---
-    // Compute candidate hashes for every service (images are available after pull + start)
-    const candidateHashMap: Record<string, CandidateHashes> = {};
-    for (const [name, service] of Object.entries(compose.services)) {
-      const definitionHash = computeDefinitionHash(service);
-      const imageDigest = service.image
-        ? await getImageDigest(exec, service.image)
-        : null;
-      candidateHashMap[name] = { definitionHash, imageDigest };
-    }
-
-    // Compute env hash (only if secrets are configured)
-    const envFilePath = `${stackDir}/.env`;
-    const currentEnvHash = hasSecrets
-      ? await computeEnvHash(exec, envFilePath)
-      : null;
-
-    // Classify services into deploy / restart / skip buckets
-    const classification = classifyServices(
-      compose,
-      existingStackState ?? {
-        path: stackDir,
-        compose_file: config.stack.compose_file,
-        deployed_at: "",
-        routes: [],
-      },
-      candidateHashMap,
-      envHashChanged,
-    );
-
-    // Build per-service ServiceState records
+    // Build per-service ServiceState records using classification and candidateHashes
+    // (candidateHashes already updated with post-deploy image digests above)
     const now = new Date().toISOString();
     const services: Record<string, ServiceState> = {};
     const toDeploySet = new Set(classification.toDeploy);
     const toRestartSet = new Set(classification.toRestart);
 
     for (const [name, service] of Object.entries(compose.services)) {
-      const candidate = candidateHashMap[name];
+      const candidate = candidateHashes[name];
 
       if (toDeploySet.has(name) || toRestartSet.has(name)) {
         // Deployed or restarted: fresh state
         services[name] = {
           image: service.image ?? "",
-          definition_hash: candidate.definitionHash,
-          image_digest: candidate.imageDigest ?? "",
+          definition_hash: candidate?.definitionHash ?? "",
+          image_digest: candidate?.imageDigest ?? "",
           env_hash: currentEnvHash ?? "",
           deployed_at: now,
           skipped_at: null,
@@ -249,8 +298,8 @@ export async function deploy(options: DeployOptions): Promise<void> {
           // First deploy, no prior state — treat as fresh
           services[name] = {
             image: service.image ?? "",
-            definition_hash: candidate.definitionHash,
-            image_digest: candidate.imageDigest ?? "",
+            definition_hash: candidate?.definitionHash ?? "",
+            image_digest: candidate?.imageDigest ?? "",
             env_hash: currentEnvHash ?? "",
             deployed_at: now,
             skipped_at: null,
