@@ -377,3 +377,127 @@ version: "3"
     expect(result.services).toEqual({});
   });
 });
+
+describe("new ParsedService fields", () => {
+  it("should capture all new service fields when present", () => {
+    const filePath = writeCompose(`
+services:
+  app:
+    image: "node:18"
+    build: "."
+    command: "npm start"
+    entrypoint: "/entrypoint.sh"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    restart: "unless-stopped"
+    volumes:
+      - "data:/app/data"
+      - "/host/path:/container/path"
+    labels:
+      com.example.description: "My app"
+      com.example.env: "production"
+    user: "node"
+    working_dir: "/app"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: "30s"
+      timeout: "10s"
+      retries: 3
+    ports:
+      - "3000:3000"
+`);
+    const result = loadComposeFile(filePath);
+    const app = result.services.app;
+    expect(app.image).toBe("node:18");
+    expect(app.command).toBe("npm start");
+    expect(app.entrypoint).toBe("/entrypoint.sh");
+    expect(app.environment).toEqual({ NODE_ENV: "production", PORT: "3000" });
+    expect(app.restart).toBe("unless-stopped");
+    expect(app.volumes).toEqual(["data:/app/data", "/host/path:/container/path"]);
+    expect(app.labels).toEqual({ "com.example.description": "My app", "com.example.env": "production" });
+    expect(app.user).toBe("node");
+    expect(app.working_dir).toBe("/app");
+    expect(app.healthcheck).toEqual({ test: ["CMD", "curl", "-f", "http://localhost:3000"], interval: "30s", timeout: "10s", retries: 3 });
+    expect(app.hasImage).toBe(true);
+    expect(app.hasBuild).toBe(true);
+    expect(app.ports).toEqual([{ published: 3000, target: 3000 }]);
+  });
+
+  it("should return undefined for absent optional fields", () => {
+    const filePath = writeCompose(`
+services:
+  minimal:
+    image: nginx
+`);
+    const result = loadComposeFile(filePath);
+    const minimal = result.services.minimal;
+    expect(minimal.hasImage).toBe(true);
+    expect(minimal.image).toBe("nginx");
+    expect(minimal.command).toBeUndefined();
+    expect(minimal.entrypoint).toBeUndefined();
+    expect(minimal.environment).toBeUndefined();
+    expect(minimal.restart).toBeUndefined();
+    expect(minimal.volumes).toBeUndefined();
+    expect(minimal.labels).toBeUndefined();
+    expect(minimal.user).toBeUndefined();
+    expect(minimal.working_dir).toBeUndefined();
+    expect(minimal.healthcheck).toBeUndefined();
+  });
+
+  it("should parse command and entrypoint as string form", () => {
+    const filePath = writeCompose(`
+services:
+  str:
+    image: nginx
+    command: "nginx -g 'daemon off;'"
+    entrypoint: "/docker-entrypoint.sh"
+`);
+    const result = loadComposeFile(filePath);
+    const str = result.services.str;
+    expect(str.command).toBe("nginx -g 'daemon off;'");
+    expect(str.entrypoint).toBe("/docker-entrypoint.sh");
+  });
+
+  it("should parse command and entrypoint as array form", () => {
+    const filePath = writeCompose(`
+services:
+  arr:
+    image: nginx
+    command: ["nginx", "-g", "daemon off;"]
+    entrypoint: ["/docker-entrypoint.sh", "nginx"]
+`);
+    const result = loadComposeFile(filePath);
+    const arr = result.services.arr;
+    expect(arr.command).toEqual(["nginx", "-g", "daemon off;"]);
+    expect(arr.entrypoint).toEqual(["/docker-entrypoint.sh", "nginx"]);
+  });
+
+  it("should parse environment as map form", () => {
+    const filePath = writeCompose(`
+services:
+  mapenv:
+    image: nginx
+    environment:
+      FOO: bar
+      BAZ: "123"
+`);
+    const result = loadComposeFile(filePath);
+    const mapenv = result.services.mapenv;
+    expect(mapenv.environment).toEqual({ FOO: "bar", BAZ: "123" });
+  });
+
+  it("should parse environment as array form", () => {
+    const filePath = writeCompose(`
+services:
+  arrenv:
+    image: nginx
+    environment:
+      - FOO=bar
+      - BAZ=123
+`);
+    const result = loadComposeFile(filePath);
+    const arrenv = result.services.arrenv;
+    expect(arrenv.environment).toEqual(["FOO=bar", "BAZ=123"]);
+  });
+});

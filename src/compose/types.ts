@@ -7,6 +7,16 @@ export interface ParsedService {
   hasImage: boolean;
   hasBuild: boolean;
   ports: NormalizedPort[];
+  image?: string;
+  command?: unknown;
+  entrypoint?: unknown;
+  environment?: unknown;
+  volumes?: unknown;
+  labels?: unknown;
+  user?: string;
+  working_dir?: string;
+  healthcheck?: unknown;
+  restart?: string;
 }
 
 export interface ParsedComposeFile {
