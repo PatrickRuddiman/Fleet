@@ -72,6 +72,25 @@ function parseService(raw: Record<string, unknown>): ParsedService {
   const healthcheck = raw.healthcheck ?? undefined;
   const restart = typeof raw.restart === "string" ? raw.restart : undefined;
 
+  let restartPolicyMaxAttempts: number | undefined;
+  if (
+    raw.deploy !== null &&
+    raw.deploy !== undefined &&
+    typeof raw.deploy === "object"
+  ) {
+    const deploy = raw.deploy as Record<string, unknown>;
+    if (
+      deploy.restart_policy !== null &&
+      deploy.restart_policy !== undefined &&
+      typeof deploy.restart_policy === "object"
+    ) {
+      const restartPolicy = deploy.restart_policy as Record<string, unknown>;
+      if (typeof restartPolicy.max_attempts === "number") {
+        restartPolicyMaxAttempts = restartPolicy.max_attempts;
+      }
+    }
+  }
+
   return {
     hasImage,
     hasBuild,
@@ -86,6 +105,7 @@ function parseService(raw: Record<string, unknown>): ParsedService {
     working_dir,
     healthcheck,
     restart,
+    restartPolicyMaxAttempts,
   };
 }
 

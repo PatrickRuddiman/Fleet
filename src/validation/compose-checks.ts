@@ -88,3 +88,26 @@ export function checkNoImageOrBuild(compose: ParsedComposeFile): Finding[] {
 
   return findings;
 }
+
+export function checkOneShotNoMaxAttempts(
+  compose: ParsedComposeFile,
+): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const [name, service] of Object.entries(compose.services)) {
+    if (
+      service.restart !== undefined &&
+      service.restart.startsWith("on-failure") &&
+      service.restartPolicyMaxAttempts === undefined
+    ) {
+      findings.push({
+        code: Codes.ONE_SHOT_NO_MAX_ATTEMPTS,
+        severity: "warning",
+        message: `Service "${name}" uses restart policy "on-failure" without a max_attempts limit, which may cause infinite restarts if the container fails`,
+        resolution: `Set "deploy.restart_policy.max_attempts" (e.g., to 3) for service "${name}" in compose.yml to prevent infinite restart loops`,
+      });
+    }
+  }
+
+  return findings;
+}

@@ -4,6 +4,7 @@ import {
   checkServiceNotFound,
   checkPortExposed,
   checkNoImageOrBuild,
+  checkOneShotNoMaxAttempts,
 } from "../src/validation/compose-checks";
 import { FleetConfig } from "../src/config/schema";
 import { ParsedComposeFile } from "../src/compose/types";
@@ -305,5 +306,92 @@ describe("checkNoImageOrBuild", () => {
     const findings = checkNoImageOrBuild(compose);
     expect(findings).toHaveLength(2);
     expect(findings.every((f) => f.code === Codes.NO_IMAGE_OR_BUILD)).toBe(true);
+  });
+});
+
+describe("checkOneShotNoMaxAttempts", () => {
+  it("service with restart on-failure and no max attempts produces warning", () => {
+    const compose: ParsedComposeFile = {
+      services: {
+        migrate: {
+          hasImage: true,
+          hasBuild: false,
+          ports: [],
+          restart: "on-failure",
+        },
+      },
+    };
+    const findings = checkOneShotNoMaxAttempts(compose);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].code).toBe(Codes.ONE_SHOT_NO_MAX_ATTEMPTS);
+    expect(findings[0].severity).toBe("warning");
+    expect(findings[0].message).toContain("migrate");
+  });
+
+  it("service with restart on-failure and restartPolicyMaxAttempts produces no findings", () => {
+    const compose: ParsedComposeFile = {
+      services: {
+        migrate: {
+          hasImage: true,
+          hasBuild: false,
+          ports: [],
+          restart: "on-failure",
+          restartPolicyMaxAttempts: 3,
+        },
+      },
+    };
+    const findings = checkOneShotNoMaxAttempts(compose);
+    expect(findings).toHaveLength(0);
+  });
+
+  it("service with restart always produces no findings", () => {
+    const compose: ParsedComposeFile = {
+      services: {
+        web: {
+          hasImage: true,
+          hasBuild: false,
+          ports: [],
+          restart: "always",
+        },
+      },
+    };
+    const findings = checkOneShotNoMaxAttempts(compose);
+    expect(findings).toHaveLength(0);
+  });
+
+  it("service with no restart field produces no findings", () => {
+    const compose: ParsedComposeFile = {
+      services: {
+        worker: {
+          hasImage: true,
+          hasBuild: false,
+          ports: [],
+        },
+      },
+    };
+    const findings = checkOneShotNoMaxAttempts(compose);
+    expect(findings).toHaveLength(0);
+  });
+
+  it("multiple services with restart on-failure and no max attempts produce multiple warnings", () => {
+    const compose: ParsedComposeFile = {
+      services: {
+        migrate: {
+          hasImage: true,
+          hasBuild: false,
+          ports: [],
+          restart: "on-failure",
+        },
+        seed: {
+          hasImage: true,
+          hasBuild: false,
+          ports: [],
+          restart: "on-failure",
+        },
+      },
+    };
+    const findings = checkOneShotNoMaxAttempts(compose);
+    expect(findings).toHaveLength(2);
+    expect(findings.every((f) => f.code === Codes.ONE_SHOT_NO_MAX_ATTEMPTS)).toBe(true);
   });
 });
