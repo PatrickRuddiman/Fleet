@@ -1,4 +1,4 @@
-import { RouteConfig } from "../config/schema";
+import { RouteConfig, FleetConfig, STACK_NAME_REGEX } from "../config/schema";
 import { Finding, Codes } from "./types";
 
 function isValidFqdn(domain: string): boolean {
@@ -67,6 +67,19 @@ export function checkDuplicateHosts(routes: RouteConfig[]): Finding[] {
         resolution: `Ensure each route uses a unique domain.`,
       });
     }
+  }
+  return findings;
+}
+
+export function checkInvalidStackName(config: FleetConfig): Finding[] {
+  const findings: Finding[] = [];
+  if (!STACK_NAME_REGEX.test(config.stack.name)) {
+    findings.push({
+      severity: "error",
+      code: Codes.INVALID_STACK_NAME,
+      message: `Stack name "${config.stack.name}" is invalid.`,
+      resolution: `Use a name matching ${STACK_NAME_REGEX} (lowercase alphanumeric, may contain hyphens, must not start with a hyphen).`,
+    });
   }
   return findings;
 }

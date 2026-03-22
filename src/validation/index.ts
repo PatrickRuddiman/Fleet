@@ -1,5 +1,5 @@
 export { Severity, Finding, Codes } from "./types";
-export { checkFqdnFormat, checkPortRange, checkDuplicateHosts } from "./fleet-checks";
+export { checkFqdnFormat, checkPortRange, checkDuplicateHosts, checkInvalidStackName } from "./fleet-checks";
 export {
   checkReservedPortConflicts,
   checkServiceNotFound,
@@ -10,7 +10,7 @@ export {
 import { FleetConfig } from "../config/schema";
 import { ParsedComposeFile } from "../compose/types";
 import { Finding } from "./types";
-import { checkFqdnFormat, checkPortRange, checkDuplicateHosts } from "./fleet-checks";
+import { checkFqdnFormat, checkPortRange, checkDuplicateHosts, checkInvalidStackName } from "./fleet-checks";
 import {
   checkReservedPortConflicts,
   checkServiceNotFound,
@@ -23,6 +23,7 @@ export function runAllChecks(
   compose: ParsedComposeFile,
 ): Finding[] {
   return [
+    ...checkInvalidStackName(config),
     ...checkFqdnFormat(config.routes),
     ...checkPortRange(config.routes),
     ...checkDuplicateHosts(config.routes),
