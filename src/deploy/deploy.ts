@@ -20,6 +20,8 @@ import {
   pullSelectiveImages,
 } from "./helpers";
 import { bootstrapInfisicalCli } from "./infisical";
+import { computeDefinitionHash, computeEnvHash } from "./hashes";
+import type { CandidateHashes } from "./classify";
 
 export async function deploy(options: DeployOptions): Promise<void> {
   const warnings: string[] = [];
@@ -140,9 +142,26 @@ export async function deploy(options: DeployOptions): Promise<void> {
     }
     await resolveSecrets(exec, config, stackDir, path.dirname(configPath));
 
-    // Step 10: Pull images
+    // Step 10: Compute hashes for selective deploy
+    console.log("Step 10: Computing hashes for selective deploy...");
+    const candidateHashes: Record<string, CandidateHashes> = {};
+    for (const [serviceName, service] of Object.entries(compose.services)) {
+      candidateHashes[serviceName] = {
+        definitionHash: computeDefinitionHash(service),
+        imageDigest: null,
+      };
+    }
+
+    const newEnvHash = configHasSecrets(config)
+      ? await computeEnvHash(exec, stackDir + "/.env")
+      : null;
+
+    const existingStackState = state.stacks[config.stack.name];
+    const envHashChanged = newEnvHash !== existingStackState?.env_hash;
+
+    // Step 11: Pull images
     if (!options.skipPull) {
-      console.log("Step 10: Pulling images...");
+      console.log("Step 11: Pulling images...");
       await pullSelectiveImages(
         exec,
         compose,
@@ -152,11 +171,11 @@ export async function deploy(options: DeployOptions): Promise<void> {
         options.force
       );
     } else {
-      console.log("Step 10: Skipping image pull (--skip-pull).");
+      console.log("Step 11: Skipping image pull (--skip-pull).");
     }
 
-    // Step 11: Start containers
-    console.log("Step 11: Starting containers...");
+    // Step 12: Start containers
+    console.log("Step 12: Starting containers...");
     const hasSecrets = configHasSecrets(config);
     const envFileFlag = hasSecrets ? ` --env-file ${stackDir}/.env` : "";
     const upResult = await exec(
@@ -166,8 +185,8 @@ export async function deploy(options: DeployOptions): Promise<void> {
       throw new Error(`Failed to start containers: ${upResult.stderr}`);
     }
 
-    // Step 12: Attach containers to fleet-proxy network
-    console.log("Step 12: Attaching containers to fleet-proxy network...");
+    // Step 13: Attach containers to fleet-proxy network
+    console.log("Step 13: Attaching containers to fleet-proxy network...");
     const routedServices = config.routes
       .map((r) => r.service)
       .filter((s): s is string => s !== undefined);
@@ -178,9 +197,9 @@ export async function deploy(options: DeployOptions): Promise<void> {
     ];
     await attachNetworks(exec, config.stack.name, uniqueServices);
 
-    // Step 13: Health checks
+    // Step 14: Health checks
     if (!options.noHealthCheck) {
-      console.log("Step 13: Running health checks...");
+      console.log("Step 14: Running health checks...");
       for (const route of config.routes) {
         if (route.health_check) {
           const serviceName =
@@ -198,19 +217,19 @@ export async function deploy(options: DeployOptions): Promise<void> {
         }
       }
     } else {
-      console.log("Step 13: Skipping health checks (--no-health-check).");
+      console.log("Step 14: Skipping health checks (--no-health-check).");
     }
 
-    // Step 14: Register Caddy routes
-    console.log("Step 14: Registering routes with Caddy...");
+    // Step 15: Register Caddy routes
+    console.log("Step 15: Registering routes with Caddy...");
     const routeStates = await registerRoutes(
       exec,
       config.stack.name,
       config.routes
     );
 
-    // Step 15: Write state
-    console.log("Step 15: Writing server state...");
+    // Step 16: Write state
+    console.log("Step 16: Writing server state...");
     const stackState: StackState = {
       path: stackDir,
       compose_file: config.stack.compose_file,
@@ -227,8 +246,8 @@ export async function deploy(options: DeployOptions): Promise<void> {
     };
     await writeState(exec, state);
 
-    // Step 16: Print summary
-    console.log("Step 16: Printing summary...");
+    // Step 17: Print summary
+    console.log("Step 17: Printing summary...");
     await printSummary(
       exec,
       config.stack.name,
