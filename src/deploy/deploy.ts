@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
 import { loadFleetConfig } from "../config";
-import { loadComposeFile, getServiceNames } from "../compose";
+import { loadComposeFile, getServiceNames, isOneShot } from "../compose";
 import { runAllChecks } from "../validation";
 import { createConnection, Connection } from "../ssh";
-import { readState, writeState, StackState } from "../state";
+import { readState, writeState, StackState, ServiceState } from "../state";
 import { STACKS_DIR } from "../fleet-root";
 import { DeployOptions } from "./types";
 import {
@@ -20,8 +20,9 @@ import {
   pullSelectiveImages,
 } from "./helpers";
 import { bootstrapInfisicalCli } from "./infisical";
-import { computeDefinitionHash, computeEnvHash } from "./hashes";
+import { classifyServices } from "./classify";
 import type { CandidateHashes } from "./classify";
+import { computeDefinitionHash, getImageDigest, computeEnvHash } from "./hashes";
 
 export async function deploy(options: DeployOptions): Promise<void> {
   const warnings: string[] = [];
@@ -185,6 +186,81 @@ export async function deploy(options: DeployOptions): Promise<void> {
       throw new Error(`Failed to start containers: ${upResult.stderr}`);
     }
 
+    // --- Post-deploy state computation ---
+    // Compute candidate hashes for every service (images are available after pull + start)
+    const candidateHashMap: Record<string, CandidateHashes> = {};
+    for (const [name, service] of Object.entries(compose.services)) {
+      const definitionHash = computeDefinitionHash(service);
+      const imageDigest = service.image
+        ? await getImageDigest(exec, service.image)
+        : null;
+      candidateHashMap[name] = { definitionHash, imageDigest };
+    }
+
+    // Compute env hash (only if secrets are configured)
+    const envFilePath = `${stackDir}/.env`;
+    const currentEnvHash = hasSecrets
+      ? await computeEnvHash(exec, envFilePath)
+      : null;
+
+    // Classify services into deploy / restart / skip buckets
+    const classification = classifyServices(
+      compose,
+      existingStackState ?? {
+        path: stackDir,
+        compose_file: config.stack.compose_file,
+        deployed_at: "",
+        routes: [],
+      },
+      candidateHashMap,
+      envHashChanged,
+    );
+
+    // Build per-service ServiceState records
+    const now = new Date().toISOString();
+    const services: Record<string, ServiceState> = {};
+    const toDeploySet = new Set(classification.toDeploy);
+    const toRestartSet = new Set(classification.toRestart);
+
+    for (const [name, service] of Object.entries(compose.services)) {
+      const candidate = candidateHashMap[name];
+
+      if (toDeploySet.has(name) || toRestartSet.has(name)) {
+        // Deployed or restarted: fresh state
+        services[name] = {
+          image: service.image ?? "",
+          definition_hash: candidate.definitionHash,
+          image_digest: candidate.imageDigest ?? "",
+          env_hash: currentEnvHash ?? "",
+          deployed_at: now,
+          skipped_at: null,
+          one_shot: isOneShot(service),
+          status: "deployed",
+        };
+      } else {
+        // Skipped: preserve existing state, update skipped_at
+        const existing = existingStackState?.services?.[name];
+        if (existing) {
+          services[name] = {
+            ...existing,
+            skipped_at: now,
+          };
+        } else {
+          // First deploy, no prior state — treat as fresh
+          services[name] = {
+            image: service.image ?? "",
+            definition_hash: candidate.definitionHash,
+            image_digest: candidate.imageDigest ?? "",
+            env_hash: currentEnvHash ?? "",
+            deployed_at: now,
+            skipped_at: null,
+            one_shot: isOneShot(service),
+            status: "deployed",
+          };
+        }
+      }
+    }
+
     // Step 13: Attach containers to fleet-proxy network
     console.log("Step 13: Attaching containers to fleet-proxy network...");
     const routedServices = config.routes
@@ -235,6 +311,8 @@ export async function deploy(options: DeployOptions): Promise<void> {
       compose_file: config.stack.compose_file,
       deployed_at: new Date().toISOString(),
       routes: routeStates,
+      services,
+      env_hash: currentEnvHash ?? undefined,
     };
     state = {
       ...state,
