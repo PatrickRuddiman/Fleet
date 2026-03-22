@@ -31,10 +31,12 @@ function makeServiceState(
   overrides: Partial<ServiceState> = {},
 ): ServiceState {
   return {
+    image: "nginx:latest",
     definition_hash: "sha256:aaa",
     image_digest: "sha256:bbb",
     env_hash: "sha256:ccc",
     deployed_at: "2025-01-01T00:00:00.000Z",
+    skipped_at: null,
     one_shot: false,
     status: "running",
     ...overrides,

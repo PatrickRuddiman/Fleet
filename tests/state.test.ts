@@ -224,18 +224,22 @@ describe("readState", () => {
           env_hash: "abc123def456",
           services: {
             web: {
+              image: "nginx:latest",
               definition_hash: "def111",
               image_digest: "sha256:aaa",
               env_hash: "abc123def456",
               deployed_at: "2025-03-01T12:00:00.000Z",
+              skipped_at: null,
               one_shot: false,
               status: "running",
             },
             worker: {
+              image: "myapp:v2",
               definition_hash: "def222",
               image_digest: "sha256:bbb",
               env_hash: "abc123def456",
               deployed_at: "2025-03-01T12:01:00.000Z",
+              skipped_at: null,
               one_shot: true,
               status: "exited",
             },
@@ -332,10 +336,12 @@ describe("writeState", () => {
           env_hash: "envhash123",
           services: {
             api: {
+              image: "node:20-alpine",
               definition_hash: "defhash1",
               image_digest: "sha256:abc",
               env_hash: "envhash123",
               deployed_at: "2025-03-01T12:00:00.000Z",
+              skipped_at: null,
               one_shot: false,
               status: "running",
             },
@@ -351,6 +357,8 @@ describe("writeState", () => {
     expect(capturedCommand).toContain('"image_digest": "sha256:abc"');
     expect(capturedCommand).toContain('"one_shot": false');
     expect(capturedCommand).toContain('"status": "running"');
+    expect(capturedCommand).toContain('"image": "node:20-alpine"');
+    expect(capturedCommand).toContain('"skipped_at": null');
     expect(capturedCommand).toContain(JSON.stringify(stateWithServices, null, 2));
   });
 });

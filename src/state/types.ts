@@ -8,10 +8,12 @@ export interface RouteState {
 }
 
 export interface ServiceState {
+  image: string;
   definition_hash: string;
   image_digest: string;
   env_hash: string;
   deployed_at: string;
+  skipped_at: string | null;
   one_shot: boolean;
   status: string;
 }
