@@ -645,7 +645,7 @@ describe("proxyStatus()", () => {
     mockStateRef.value = singleStackState();
     mockExecHandlersRef.value["docker inspect"] = {
       stdout: "",
-      stderr: "Error: No such object: fleet-caddy",
+      stderr: "Error: No such object: fleet-proxy",
       code: 1,
     };
 
@@ -834,7 +834,7 @@ describe("proxyStatus()", () => {
 
     mockExecHandlersRef.value["docker inspect"] = {
       stdout: "",
-      stderr: "Error: No such object: fleet-caddy",
+      stderr: "Error: No such object: fleet-proxy",
       code: 1,
     };
 

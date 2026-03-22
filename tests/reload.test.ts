@@ -168,12 +168,12 @@ describe("reloadRoutes", () => {
 
     // Verify DELETE command for the route
     expect(mockExec).toHaveBeenCalledWith(
-      "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
+      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
     );
 
     // Verify ADD command contains correct upstream host
     expect(mockExec).toHaveBeenCalledWith(
-      expect.stringContaining("docker exec -i fleet-caddy")
+      expect.stringContaining("docker exec -i fleet-proxy")
     );
     expect(mockExec).toHaveBeenCalledWith(
       expect.stringContaining("myapp-web-1:3000")
@@ -204,13 +204,13 @@ describe("reloadRoutes", () => {
 
     // Verify DELETE commands for all three caddy_ids
     expect(mockExec).toHaveBeenCalledWith(
-      "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
+      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
     );
     expect(mockExec).toHaveBeenCalledWith(
-      "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__api"
+      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__api"
     );
     expect(mockExec).toHaveBeenCalledWith(
-      "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/backend__server"
+      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/backend__server"
     );
 
     // Verify ADD commands contain correct upstream hosts
@@ -362,7 +362,7 @@ describe("reloadProxy", () => {
     // Verify DELETE command for the route
     expect(mockExecCommandsRef.value).toEqual(
       expect.arrayContaining([
-        "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__web",
+        "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web",
       ])
     );
     // Verify ADD command for the route
@@ -384,9 +384,9 @@ describe("reloadProxy", () => {
     // Verify DELETE commands for all 3 routes
     expect(mockExecCommandsRef.value).toEqual(
       expect.arrayContaining([
-        "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__web",
-        "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__api",
-        "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/backend__server",
+        "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web",
+        "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__api",
+        "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/backend__server",
       ])
     );
 
@@ -455,7 +455,7 @@ describe("reloadProxy", () => {
       cmd.includes("DELETE")
     );
     expect(deleteCmd).toBe(
-      "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
+      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
     );
 
     // Verify ADD command format
@@ -463,7 +463,7 @@ describe("reloadProxy", () => {
       cmd.includes("POST")
     );
     expect(addCmd).toBeDefined();
-    expect(addCmd).toContain("docker exec -i fleet-caddy");
+    expect(addCmd).toContain("docker exec -i fleet-proxy");
     expect(addCmd).toContain("myapp.example.com");
     expect(addCmd).toContain("myapp-web-1:3000");
   });

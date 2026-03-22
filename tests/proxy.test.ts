@@ -8,9 +8,9 @@ function mockExec(result: ExecResult): ExecFn {
 }
 
 describe("generateProxyCompose", () => {
-  it("should return valid YAML containing the fleet-caddy service", () => {
+  it("should return valid YAML containing the fleet-proxy service", () => {
     const content = generateProxyCompose();
-    expect(content).toContain("fleet-caddy");
+    expect(content).toContain("fleet-proxy");
   });
 
   it("should specify the caddy:2-alpine image", () => {
@@ -18,9 +18,9 @@ describe("generateProxyCompose", () => {
     expect(content).toContain("image: caddy:2-alpine");
   });
 
-  it("should set the container name to fleet-caddy", () => {
+  it("should set the container name to fleet-proxy", () => {
     const content = generateProxyCompose();
-    expect(content).toContain("container_name: fleet-caddy");
+    expect(content).toContain("container_name: fleet-proxy");
   });
 
   it("should map ports 80 and 443", () => {
