@@ -652,6 +652,90 @@ describe("post-deploy state update", () => {
       expect(services.web.skipped_at).toBeNull();
       expect(services.web.deployed_at).toBe(NOW);
     });
+
+    it("force mode produces non-empty definition_hash values in ServiceState", () => {
+      const compose: ParsedComposeFile = {
+        services: {
+          web: makeService({ image: "nginx:latest" }),
+          api: makeService({ image: "node:20" }),
+        },
+      };
+
+      // Simulate force mode: all services go to toDeploy, hashes are computed
+      const candidateHashMap: Record<string, CandidateHashes> = {
+        web: makeCandidateHashes({
+          definitionHash: "sha256:force-web-def",
+          imageDigest: "sha256:force-web-dig",
+        }),
+        api: makeCandidateHashes({
+          definitionHash: "sha256:force-api-def",
+          imageDigest: "sha256:force-api-dig",
+        }),
+      };
+      // Force mode: all services classified as toDeploy
+      const classification = {
+        toDeploy: ["web", "api"],
+        toRestart: [],
+        toSkip: [],
+      };
+
+      const services = buildPostDeployServices(
+        compose,
+        classification,
+        candidateHashMap,
+        undefined,
+        "sha256:force-env",
+        NOW,
+      );
+
+      // definition_hash must be non-empty (correctly computed, not empty string)
+      expect(services.web.definition_hash).toBe("sha256:force-web-def");
+      expect(services.web.definition_hash).not.toBe("");
+      expect(services.api.definition_hash).toBe("sha256:force-api-def");
+      expect(services.api.definition_hash).not.toBe("");
+    });
+
+    it("force mode produces non-empty env_hash values in ServiceState", () => {
+      const compose: ParsedComposeFile = {
+        services: {
+          web: makeService({ image: "nginx:latest" }),
+          api: makeService({ image: "node:20" }),
+        },
+      };
+
+      const candidateHashMap: Record<string, CandidateHashes> = {
+        web: makeCandidateHashes({
+          definitionHash: "sha256:web-def",
+          imageDigest: "sha256:web-dig",
+        }),
+        api: makeCandidateHashes({
+          definitionHash: "sha256:api-def",
+          imageDigest: "sha256:api-dig",
+        }),
+      };
+      // Force mode: all services classified as toDeploy
+      const classification = {
+        toDeploy: ["web", "api"],
+        toRestart: [],
+        toSkip: [],
+      };
+
+      const currentEnvHash = "sha256:force-env-hash";
+      const services = buildPostDeployServices(
+        compose,
+        classification,
+        candidateHashMap,
+        undefined,
+        currentEnvHash,
+        NOW,
+      );
+
+      // env_hash must be non-empty (correctly computed, not empty string)
+      expect(services.web.env_hash).toBe("sha256:force-env-hash");
+      expect(services.web.env_hash).not.toBe("");
+      expect(services.api.env_hash).toBe("sha256:force-env-hash");
+      expect(services.api.env_hash).not.toBe("");
+    });
   });
 
   // -----------------------------------------------------------------------

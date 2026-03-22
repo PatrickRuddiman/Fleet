@@ -29,6 +29,10 @@ export async function deploy(options: DeployOptions): Promise<void> {
   let connection: Connection | null = null;
 
   try {
+    if (options.force) {
+      console.log("⚠ Force mode — all services will be redeployed");
+    }
+
     // Step 1: Load and validate config
     console.log("Step 1: Loading and validating configuration...");
     const configPath = path.resolve("fleet.yml");
@@ -53,6 +57,10 @@ export async function deploy(options: DeployOptions): Promise<void> {
     const findingWarnings = findings.filter((f) => f.severity === "warning");
     for (const finding of findingWarnings) {
       warnings.push(`[${finding.code}] ${finding.message}`);
+    }
+
+    if (options.force) {
+      console.log("\n⚠ Force mode — all services will be redeployed\n");
     }
 
     // Step 2: Connect to server
@@ -184,6 +192,15 @@ export async function deploy(options: DeployOptions): Promise<void> {
         console.log(`  Skip: ${classification.toSkip.join(", ")}`);
       }
     } else {
+      // Force mode: compute hashes for state.json accuracy, but skip classification
+      for (const [name, service] of Object.entries(compose.services)) {
+        const definitionHash = computeDefinitionHash(service);
+        const imageDigest = service.image
+          ? await getImageDigest(exec, service.image)
+          : null;
+        candidateHashes[name] = { definitionHash, imageDigest };
+      }
+      currentEnvHash = await computeEnvHash(exec, `${stackDir}/.env`);
       classification = {
         toDeploy: getServiceNames(compose),
         toRestart: [],
