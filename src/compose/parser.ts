@@ -61,7 +61,32 @@ function parseService(raw: Record<string, unknown>): ParsedService {
   const rawPorts = Array.isArray(raw.ports) ? raw.ports : [];
   const ports: NormalizedPort[] = rawPorts.map(normalizePort);
 
-  return { hasImage, hasBuild, ports };
+  const image = typeof raw.image === "string" ? raw.image : undefined;
+  const command = raw.command ?? undefined;
+  const entrypoint = raw.entrypoint ?? undefined;
+  const environment = raw.environment ?? undefined;
+  const volumes = raw.volumes ?? undefined;
+  const labels = raw.labels ?? undefined;
+  const user = typeof raw.user === "string" ? raw.user : undefined;
+  const working_dir = typeof raw.working_dir === "string" ? raw.working_dir : undefined;
+  const healthcheck = raw.healthcheck ?? undefined;
+  const restart = typeof raw.restart === "string" ? raw.restart : undefined;
+
+  return {
+    hasImage,
+    hasBuild,
+    ports,
+    image,
+    command,
+    entrypoint,
+    environment,
+    volumes,
+    labels,
+    user,
+    working_dir,
+    healthcheck,
+    restart,
+  };
 }
 
 export function loadComposeFile(filePath: string): ParsedComposeFile {
