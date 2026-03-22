@@ -3,6 +3,7 @@ import {
   checkFqdnFormat,
   checkPortRange,
   checkDuplicateHosts,
+  checkInvalidStackName,
 } from "../src/validation/fleet-checks";
 import {
   checkReservedPortConflicts,
@@ -218,6 +219,96 @@ describe("checkDuplicateHosts", () => {
     expect(findings).toHaveLength(2);
     expect(findings.every((f) => f.code === Codes.DUPLICATE_HOST)).toBe(true);
     expect(findings.every((f) => f.severity === "error")).toBe(true);
+  });
+});
+
+function makeConfig(stackName: string): FleetConfig {
+  return {
+    version: "1",
+    server: { host: "192.168.1.1", port: 22, user: "root" },
+    stack: { name: stackName, compose_file: "docker-compose.yml" },
+    routes: [{ domain: "example.com", port: 3000, tls: true }],
+  };
+}
+
+describe("checkInvalidStackName", () => {
+  describe("valid stack names produce no findings", () => {
+    it("lowercase alphabetic name", () => {
+      const findings = checkInvalidStackName(makeConfig("myapp"));
+      expect(findings).toHaveLength(0);
+    });
+
+    it("name with hyphens", () => {
+      const findings = checkInvalidStackName(makeConfig("my-app"));
+      expect(findings).toHaveLength(0);
+    });
+
+    it("name starting with a digit", () => {
+      const findings = checkInvalidStackName(makeConfig("1app"));
+      expect(findings).toHaveLength(0);
+    });
+
+    it("alphanumeric with hyphens", () => {
+      const findings = checkInvalidStackName(makeConfig("my-app-2"));
+      expect(findings).toHaveLength(0);
+    });
+
+    it("single character", () => {
+      const findings = checkInvalidStackName(makeConfig("a"));
+      expect(findings).toHaveLength(0);
+    });
+
+    it("single digit", () => {
+      const findings = checkInvalidStackName(makeConfig("1"));
+      expect(findings).toHaveLength(0);
+    });
+  });
+
+  describe("invalid stack names produce INVALID_STACK_NAME finding", () => {
+    it("uppercase letters", () => {
+      const findings = checkInvalidStackName(makeConfig("MyApp"));
+      expect(findings).toHaveLength(1);
+      expect(findings[0].code).toBe(Codes.INVALID_STACK_NAME);
+      expect(findings[0].severity).toBe("error");
+      expect(findings[0].message).toContain("MyApp");
+      expect(findings[0].resolution).toBeTruthy();
+    });
+
+    it("underscores", () => {
+      const findings = checkInvalidStackName(makeConfig("my_app"));
+      expect(findings).toHaveLength(1);
+      expect(findings[0].code).toBe(Codes.INVALID_STACK_NAME);
+      expect(findings[0].severity).toBe("error");
+      expect(findings[0].message).toContain("my_app");
+      expect(findings[0].resolution).toBeTruthy();
+    });
+
+    it("spaces", () => {
+      const findings = checkInvalidStackName(makeConfig("my app"));
+      expect(findings).toHaveLength(1);
+      expect(findings[0].code).toBe(Codes.INVALID_STACK_NAME);
+      expect(findings[0].severity).toBe("error");
+      expect(findings[0].message).toContain("my app");
+      expect(findings[0].resolution).toBeTruthy();
+    });
+
+    it("starts with a hyphen", () => {
+      const findings = checkInvalidStackName(makeConfig("-myapp"));
+      expect(findings).toHaveLength(1);
+      expect(findings[0].code).toBe(Codes.INVALID_STACK_NAME);
+      expect(findings[0].severity).toBe("error");
+      expect(findings[0].message).toContain("-myapp");
+      expect(findings[0].resolution).toBeTruthy();
+    });
+
+    it("empty string", () => {
+      const findings = checkInvalidStackName(makeConfig(""));
+      expect(findings).toHaveLength(1);
+      expect(findings[0].code).toBe(Codes.INVALID_STACK_NAME);
+      expect(findings[0].severity).toBe("error");
+      expect(findings[0].message).toContain("");
+      expect(findings[0].resolution).toBeTruthy();
+    });
   });
 });
 

@@ -156,4 +156,26 @@ describe("validate compose integration", () => {
     expect(warnings.some((w: Finding) => w.code === Codes.PORT_EXPOSED && w.message.includes("8080"))).toBe(true);
     expect(warnings.some((w: Finding) => w.code === Codes.PORT_EXPOSED && w.message.includes("3000"))).toBe(true);
   });
+
+  it("invalid stack name produces INVALID_STACK_NAME error", () => {
+    writeComposeFile(
+      `services:
+  web:
+    image: nginx
+`
+    );
+
+    const config = {
+      version: "1" as const,
+      server: { host: "192.168.1.1", port: 22, user: "root" },
+      stack: { name: "My_App", compose_file: "docker-compose.yml" },
+      routes: [{ domain: "example.com", port: 3000, tls: true }],
+    };
+
+    const composePath = path.join(tmpDir, "docker-compose.yml");
+    const compose = loadComposeFile(composePath);
+    const { errors } = runValidation(config, compose);
+
+    expect(errors.some((e: Finding) => e.code === Codes.INVALID_STACK_NAME)).toBe(true);
+  });
 });
