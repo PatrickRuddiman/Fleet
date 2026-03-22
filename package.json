@@ -1,5 +1,5 @@
 {
-  "name": "@fleetdeploy/cli",
+  "name": "@pruddiman/fleet",
   "version": "0.1.0",
   "description": "A TypeScript CLI tool for managing deployments",
   "files": [
