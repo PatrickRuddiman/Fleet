@@ -13,7 +13,45 @@ import {
   buildCaddyId,
 } from "../caddy";
 import { HostCollision, UploadFileOptions } from "./types";
+import type { ServiceClassification } from "./classify";
+import type { StackState } from "../state/types";
 import { getImageDigest } from "./hashes";
+
+/**
+ * Converts an ISO timestamp to a human-readable relative time string.
+ * Examples: "just now", "2 minutes ago", "3 hours ago", "4 days ago".
+ * Returns "in the future" for timestamps ahead of the current time.
+ */
+export function formatRelativeTime(isoTimestamp: string): string {
+  const then = Date.parse(isoTimestamp);
+  if (isNaN(then)) {
+    return "unknown";
+  }
+
+  const diffMs = Date.now() - then;
+
+  if (diffMs < 0) {
+    return "in the future";
+  }
+
+  const seconds = Math.floor(diffMs / 1000);
+  if (seconds < 60) {
+    return "just now";
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "1 day ago" : `${days} days ago`;
+}
 
 /**
  * Compares incoming routes against all stacks in state, flagging conflicts
@@ -379,30 +417,113 @@ export function configHasSecrets(config: FleetConfig): boolean {
 }
 
 /**
- * Runs `docker compose ps` and formats the output with route information
- * and any collected warnings.
+ * Formats and prints the deploy summary with per-service classification details,
+ * route information, warnings, and elapsed time.
+ *
+ * Supports three output modes:
+ * - Selective mode: per-service reason and outcome lines
+ * - Force mode: banner and `(forced)` tags on all services
+ * - Nothing-changed mode: all non-one-shot services show `no changes → skipped`
  */
-export async function printSummary(
-  exec: ExecFn,
-  stackName: string,
-  stackDir: string,
+export function printSummary(
+  classification: ServiceClassification,
+  compose: ParsedComposeFile,
+  reasons: Record<string, string>,
+  force: boolean,
+  existingStackState: StackState | undefined,
+  elapsedSeconds: number,
   routes: RouteConfig[],
-  warnings: string[]
-): Promise<void> {
+  warnings: string[],
+): void {
   console.log("\n--- Deploy Summary ---\n");
 
-  // Run docker compose ps
-  const psResult = await exec(
-    `docker compose -p ${stackName} -f ${stackDir}/compose.yml ps`
+  // Force mode banner
+  if (force) {
+    console.log("⚠ Force mode — all services will be redeployed\n");
+  }
+
+  // Build per-service status lines
+  const toDeploySet = new Set(classification.toDeploy);
+  const toRestartSet = new Set(classification.toRestart);
+
+  // Determine if this is "nothing changed" mode:
+  // all non-one-shot services are in toSkip (and nothing in toDeploy except one-shots, nothing in toRestart)
+  const nonOneShotInToDeploy = classification.toDeploy.filter(
+    (name) => !isOneShot(compose.services[name])
   );
-  if (psResult.code === 0 && psResult.stdout.trim()) {
+  const nothingChanged = nonOneShotInToDeploy.length === 0 && classification.toRestart.length === 0;
+
+  // Build rows: [serviceName, detail]
+  type StatusRow = { name: string; detail: string };
+  const rows: StatusRow[] = [];
+  const allServiceNames = Object.keys(compose.services);
+
+  for (const name of allServiceNames) {
+    const service = compose.services[name];
+    const oneShot = isOneShot(service);
+    const reason = reasons[name] ?? "no changes";
+
+    if (force) {
+      // Force mode: all services show "(forced)" tags
+      if (oneShot) {
+        rows.push({ name, detail: "run (forced)" });
+      } else {
+        rows.push({ name, detail: "deployed (forced)" });
+      }
+    } else if (toDeploySet.has(name)) {
+      if (oneShot) {
+        rows.push({ name, detail: `${reason} → run` });
+      } else {
+        rows.push({ name, detail: `${reason} → deployed` });
+      }
+    } else if (toRestartSet.has(name)) {
+      rows.push({ name, detail: `${reason} → restarted` });
+    } else {
+      // Skipped
+      const lastDeployed = existingStackState?.services?.[name]?.deployed_at;
+      const timeAgo = lastDeployed ? ` (last deployed ${formatRelativeTime(lastDeployed)})` : "";
+      if (nothingChanged && !oneShot) {
+        rows.push({ name, detail: `no changes → skipped${timeAgo}` });
+      } else {
+        rows.push({ name, detail: `${reason} → skipped${timeAgo}` });
+      }
+    }
+  }
+
+  // Compute padEnd width (max service name length)
+  const maxNameWidth = Math.max(...rows.map((r) => r.name.length));
+
+  // Print service lines
+  if (rows.length > 0) {
     console.log("Services:");
-    console.log(psResult.stdout);
+    for (const row of rows) {
+      console.log(`  ${row.name.padEnd(maxNameWidth)}  ${row.detail}`);
+    }
+  }
+
+  // Summary counts line
+  const deployedCount = classification.toDeploy.filter(
+    (n) => !isOneShot(compose.services[n])
+  ).length;
+  const restartedCount = classification.toRestart.length;
+  const oneShotCount = classification.toDeploy.filter(
+    (n) => isOneShot(compose.services[n])
+  ).length;
+  const skippedCount = classification.toSkip.length;
+
+  const parts: string[] = [];
+  if (deployedCount > 0) parts.push(`${deployedCount} deployed`);
+  if (restartedCount > 0) parts.push(`${restartedCount} restarted`);
+  if (oneShotCount > 0) parts.push(`${oneShotCount} run (one-shot)`);
+  if (skippedCount > 0) parts.push(`${skippedCount} skipped`);
+
+  if (parts.length > 0) {
+    console.log(`\n${parts.join(", ")}`);
   }
 
   // Print routes
   if (routes.length > 0) {
-    console.log("Routes:");
+    console.log("\nRoutes:");
     for (const route of routes) {
       const protocol = route.tls !== false ? "https" : "http";
       console.log(`  ${protocol}://${route.domain} → ${route.service || "default"}:${route.port}`);
@@ -417,7 +538,8 @@ export async function printSummary(
     }
   }
 
-  console.log("\nDeploy complete.");
+  // Deploy elapsed time
+  console.log(`\nDeploy complete in ${elapsedSeconds}s`);
 }
 
 /**

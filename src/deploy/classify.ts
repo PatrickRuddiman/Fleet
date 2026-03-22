@@ -19,6 +19,7 @@ export interface ServiceClassification {
   toDeploy: string[];
   toRestart: string[];
   toSkip: string[];
+  reasons: Record<string, string>;
 }
 
 /**
@@ -48,6 +49,7 @@ export function classifyServices(
   const toDeploy: string[] = [];
   const toRestart: string[] = [];
   const toSkip: string[] = [];
+  const reasons: Record<string, string> = {};
 
   for (const name of Object.keys(compose.services)) {
     const service = compose.services[name];
@@ -57,18 +59,21 @@ export function classifyServices(
     // 1. One-shot services always redeploy
     if (isOneShot(service)) {
       toDeploy.push(name);
+      reasons[name] = "one-shot";
       continue;
     }
 
     // 2. New service (not in stored state)
     if (!stored) {
       toDeploy.push(name);
+      reasons[name] = "new service";
       continue;
     }
 
     // 3. Definition hash changed
     if (candidate && stored.definition_hash !== candidate.definitionHash) {
       toDeploy.push(name);
+      reasons[name] = "definition changed";
       continue;
     }
 
@@ -80,18 +85,21 @@ export function classifyServices(
       stored.image_digest !== candidate.imageDigest
     ) {
       toDeploy.push(name);
+      reasons[name] = `image changed (${stored.image_digest.substring(0, 7)} → ${candidate.imageDigest!.substring(0, 7)})`;
       continue;
     }
 
     // 5. Env hash changed
     if (envHashChanged) {
       toRestart.push(name);
+      reasons[name] = "env changed";
       continue;
     }
 
     // 6. Nothing changed
     toSkip.push(name);
+    reasons[name] = "no changes";
   }
 
-  return { toDeploy, toRestart, toSkip };
+  return { toDeploy, toRestart, toSkip, reasons };
 }

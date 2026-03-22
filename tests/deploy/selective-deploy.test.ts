@@ -414,10 +414,13 @@ describe("selective deploy execution (step 11)", () => {
 
     // Check log messages for skip
     expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining("⊘ db — no changes detected, skipped")
+      expect.stringContaining("no changes → skipped")
     );
     expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining("⊘ cache — no changes detected, skipped")
+      expect.stringContaining("db")
+    );
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("cache")
     );
 
     // No up or restart commands for these services in step 11

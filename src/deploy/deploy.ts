@@ -29,6 +29,8 @@ export async function deploy(options: DeployOptions): Promise<void> {
   let connection: Connection | null = null;
 
   try {
+    const deployStartTime = Date.now();
+
     if (options.force) {
       console.log("⚠ Force mode — all services will be redeployed");
     }
@@ -182,15 +184,6 @@ export async function deploy(options: DeployOptions): Promise<void> {
         candidateHashes,
         envHashChanged,
       );
-      if (classification.toDeploy.length > 0) {
-        console.log(`  Deploy: ${classification.toDeploy.join(", ")}`);
-      }
-      if (classification.toRestart.length > 0) {
-        console.log(`  Restart: ${classification.toRestart.join(", ")}`);
-      }
-      if (classification.toSkip.length > 0) {
-        console.log(`  Skip: ${classification.toSkip.join(", ")}`);
-      }
     } else {
       // Force mode: compute hashes for state.json accuracy, but skip classification
       for (const [name, service] of Object.entries(compose.services)) {
@@ -201,12 +194,13 @@ export async function deploy(options: DeployOptions): Promise<void> {
         candidateHashes[name] = { definitionHash, imageDigest };
       }
       currentEnvHash = await computeEnvHash(exec, `${stackDir}/.env`);
+      const allServiceNames = getServiceNames(compose);
       classification = {
-        toDeploy: getServiceNames(compose),
+        toDeploy: allServiceNames,
         toRestart: [],
         toSkip: [],
+        reasons: Object.fromEntries(allServiceNames.map((name) => [name, "forced"])),
       };
-      console.log("  Force mode: all services will be deployed.");
     }
 
     // Step 11: Pull images
@@ -259,10 +253,6 @@ export async function deploy(options: DeployOptions): Promise<void> {
         if (restartResult.code !== 0) {
           throw new Error(`Failed to restart service ${service}: ${restartResult.stderr}`);
         }
-      }
-
-      for (const service of classification.toSkip) {
-        console.log(`  ⊘ ${service} — no changes detected, skipped`);
       }
     }
 
@@ -392,12 +382,16 @@ export async function deploy(options: DeployOptions): Promise<void> {
 
     // Step 17: Print summary
     console.log("Step 17: Printing summary...");
-    await printSummary(
-      exec,
-      config.stack.name,
-      stackDir,
+    const elapsedSeconds = Math.round((Date.now() - deployStartTime) / 1000);
+    printSummary(
+      classification,
+      compose,
+      classification.reasons,
+      options.force,
+      existingStackState,
+      elapsedSeconds,
       config.routes,
-      warnings
+      warnings,
     );
   } catch (error) {
     if (error instanceof Error) {
