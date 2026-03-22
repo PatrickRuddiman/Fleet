@@ -60,15 +60,8 @@ export async function deploy(options: DeployOptions): Promise<void> {
     console.log("Step 3: Reading server state...");
     let state = await readState(exec);
 
-    // Step 4: Bootstrap proxy
-    console.log("Step 4: Bootstrapping proxy...");
-    const acmeEmail = config.routes.find((r) => r.acme_email)?.acme_email;
-    const bootstrapResult = await bootstrapProxy(exec, state, acmeEmail);
-    const fleetRoot = bootstrapResult.fleetRoot;
-    state = bootstrapResult.updatedState;
-
-    // Step 5: Check for host collisions
-    console.log("Step 5: Checking for host collisions...");
+    // Step 4: Check for host collisions
+    console.log("Step 4: Checking for host collisions...");
     const collisions = detectHostCollisions(
       config.routes,
       state,
@@ -83,6 +76,13 @@ export async function deploy(options: DeployOptions): Promise<void> {
       }
       process.exit(1);
     }
+
+    // Step 5: Bootstrap proxy
+    console.log("Step 5: Bootstrapping proxy...");
+    const acmeEmail = config.routes.find((r) => r.acme_email)?.acme_email;
+    const bootstrapResult = await bootstrapProxy(exec, state, acmeEmail);
+    const fleetRoot = bootstrapResult.fleetRoot;
+    state = bootstrapResult.updatedState;
 
     // Dry-run exit point
     if (options.dryRun) {
