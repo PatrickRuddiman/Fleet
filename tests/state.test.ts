@@ -153,6 +153,113 @@ describe("readState", () => {
       "Invalid state file structure"
     );
   });
+
+  it("should not throw when stack entries omit services and env_hash (backward compatibility)", async () => {
+    const legacyState: FleetState = {
+      fleet_root: "/opt/fleet",
+      caddy_bootstrapped: true,
+      stacks: {
+        legacy: {
+          path: "/opt/fleet/legacy",
+          compose_file: "docker-compose.yml",
+          deployed_at: "2025-01-10T08:00:00.000Z",
+          routes: [],
+        },
+      },
+    };
+    const exec = mockExec({
+      stdout: JSON.stringify(legacyState, null, 2),
+      stderr: "",
+      code: 0,
+    });
+
+    const result = await readState(exec);
+
+    expect(result.stacks.legacy).toBeDefined();
+    expect(result.stacks.legacy.path).toBe("/opt/fleet/legacy");
+  });
+
+  it("should return undefined for services on a stack that lacks the field", async () => {
+    const stateWithoutServices: FleetState = {
+      fleet_root: "/opt/fleet",
+      caddy_bootstrapped: false,
+      stacks: {
+        basic: {
+          path: "/opt/fleet/basic",
+          compose_file: "compose.yml",
+          deployed_at: "2025-02-01T00:00:00.000Z",
+          routes: [],
+        },
+      },
+    };
+    const exec = mockExec({
+      stdout: JSON.stringify(stateWithoutServices, null, 2),
+      stderr: "",
+      code: 0,
+    });
+
+    const result = await readState(exec);
+
+    expect(result.stacks.basic.services).toBeUndefined();
+    expect(result.stacks.basic.env_hash).toBeUndefined();
+  });
+
+  it("should round-trip a state.json containing env_hash and services", async () => {
+    const fullState: FleetState = {
+      fleet_root: "/opt/fleet",
+      caddy_bootstrapped: true,
+      stacks: {
+        webapp: {
+          path: "/opt/fleet/webapp",
+          compose_file: "docker-compose.yml",
+          deployed_at: "2025-03-01T12:00:00.000Z",
+          routes: [
+            {
+              host: "webapp.example.com",
+              service: "web",
+              port: 3000,
+              caddy_id: "webapp__web",
+            },
+          ],
+          env_hash: "abc123def456",
+          services: {
+            web: {
+              definition_hash: "def111",
+              image_digest: "sha256:aaa",
+              env_hash: "abc123def456",
+              deployed_at: "2025-03-01T12:00:00.000Z",
+              one_shot: false,
+              status: "running",
+            },
+            worker: {
+              definition_hash: "def222",
+              image_digest: "sha256:bbb",
+              env_hash: "abc123def456",
+              deployed_at: "2025-03-01T12:01:00.000Z",
+              one_shot: true,
+              status: "exited",
+            },
+          },
+        },
+      },
+    };
+    const exec = mockExec({
+      stdout: JSON.stringify(fullState, null, 2),
+      stderr: "",
+      code: 0,
+    });
+
+    const result = await readState(exec);
+
+    expect(result).toEqual(fullState);
+    expect(result.stacks.webapp.env_hash).toBe("abc123def456");
+    expect(result.stacks.webapp.services).toBeDefined();
+    expect(result.stacks.webapp.services!.web.definition_hash).toBe("def111");
+    expect(result.stacks.webapp.services!.web.one_shot).toBe(false);
+    expect(result.stacks.webapp.services!.worker.image_digest).toBe("sha256:bbb");
+    expect(result.stacks.webapp.services!.worker.one_shot).toBe(true);
+    expect(result.stacks.webapp.services!.worker.status).toBe("exited");
+  });
 });
 
 describe("writeState", () => {
@@ -204,6 +311,47 @@ describe("writeState", () => {
     await expect(writeState(exec, sampleState())).rejects.toThrow(
       "exited with code 1"
     );
+  });
+
+  it("should include env_hash and services in serialized output when present", async () => {
+    let capturedCommand = "";
+    const exec: ExecFn = async (command: string) => {
+      capturedCommand = command;
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    const stateWithServices: FleetState = {
+      fleet_root: "/opt/fleet",
+      caddy_bootstrapped: true,
+      stacks: {
+        myapp: {
+          path: "/opt/fleet/myapp",
+          compose_file: "docker-compose.yml",
+          deployed_at: "2025-03-01T12:00:00.000Z",
+          routes: [],
+          env_hash: "envhash123",
+          services: {
+            api: {
+              definition_hash: "defhash1",
+              image_digest: "sha256:abc",
+              env_hash: "envhash123",
+              deployed_at: "2025-03-01T12:00:00.000Z",
+              one_shot: false,
+              status: "running",
+            },
+          },
+        },
+      },
+    };
+
+    await writeState(exec, stateWithServices);
+
+    expect(capturedCommand).toContain('"env_hash": "envhash123"');
+    expect(capturedCommand).toContain('"definition_hash": "defhash1"');
+    expect(capturedCommand).toContain('"image_digest": "sha256:abc"');
+    expect(capturedCommand).toContain('"one_shot": false');
+    expect(capturedCommand).toContain('"status": "running"');
+    expect(capturedCommand).toContain(JSON.stringify(stateWithServices, null, 2));
   });
 });
 
