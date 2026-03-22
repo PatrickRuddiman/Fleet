@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { FleetState } from "../src/state/types";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { FleetState, ServiceState } from "../src/state/types";
 
 // --- Mutable mock state (hoisted so vi.mock factories can access them) ---
 const {
@@ -83,6 +83,10 @@ beforeEach(() => {
   );
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 // --- Helper functions ---
 
 function sampleState(): FleetState {
@@ -153,6 +157,45 @@ function emptyState(): FleetState {
     fleet_root: "/opt/fleet",
     caddy_bootstrapped: true,
     stacks: {},
+  };
+}
+
+function makeServiceState(overrides: Partial<ServiceState> = {}): ServiceState {
+  return {
+    image: "nginx:latest",
+    definition_hash: "sha256:aaa",
+    image_digest: "sha256:bbb",
+    env_hash: "sha256:ccc",
+    deployed_at: "2025-01-15T10:00:00.000Z",
+    skipped_at: null,
+    one_shot: false,
+    status: "running",
+    ...overrides,
+  };
+}
+
+function stateWithServices(
+  services: Record<string, ServiceState>,
+): FleetState {
+  return {
+    fleet_root: "/opt/fleet",
+    caddy_bootstrapped: true,
+    stacks: {
+      myapp: {
+        path: "/opt/fleet/stacks/myapp",
+        compose_file: "compose.yml",
+        deployed_at: "2025-01-15T10:30:00.000Z",
+        routes: [
+          {
+            host: "myapp.example.com",
+            service: "web",
+            port: 3000,
+            caddy_id: "myapp__web",
+          },
+        ],
+        services,
+      },
+    },
   };
 }
 
@@ -539,5 +582,103 @@ describe("ps()", () => {
     expect(mockProcessExitCodeRef.value).toBeUndefined();
     const logOutput = mockConsoleLogRef.value.join("\n");
     expect(logOutput).toContain("unknown");
+  });
+});
+
+describe("per-service deployed/skipped timestamps", () => {
+  it("(a) should show relative deployed time without annotation when only deployed_at is set", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-15T12:30:00.000Z"));
+
+    mockStateRef.value = stateWithServices({
+      web: makeServiceState({
+        deployed_at: "2025-01-15T10:30:00.000Z",
+        skipped_at: null,
+      }),
+    });
+    mockExecHandlersRef.value["docker compose"] = {
+      stdout: '{"Service":"web","State":"running"}',
+      stderr: "",
+      code: 0,
+    };
+
+    await ps();
+
+    const logOutput = mockConsoleLogRef.value.join("\n");
+    // Should show "2 hours ago" for web, with no skip annotation
+    expect(logOutput).toContain("2 hours ago");
+    expect(logOutput).not.toContain("skipped");
+  });
+
+  it("(b) should show both deployed and skipped times when skipped_at is more recent", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-15T14:00:00.000Z"));
+
+    mockStateRef.value = stateWithServices({
+      web: makeServiceState({
+        deployed_at: "2025-01-15T10:00:00.000Z",
+        skipped_at: "2025-01-15T13:00:00.000Z",
+      }),
+    });
+    mockExecHandlersRef.value["docker compose"] = {
+      stdout: '{"Service":"web","State":"running"}',
+      stderr: "",
+      code: 0,
+    };
+
+    await ps();
+
+    const logOutput = mockConsoleLogRef.value.join("\n");
+    // deployed_at was 4 hours ago, skipped_at was 1 hour ago
+    expect(logOutput).toContain("4 hours ago");
+    expect(logOutput).toContain("skipped");
+    expect(logOutput).toContain("1 hour ago");
+  });
+
+  it("(c) should fall back to stack-level deployed_at for pre-V1.2 state without services map", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-15T12:30:00.000Z"));
+
+    // Use sampleState() which has no `services` field — simulates pre-V1.2 state
+    mockStateRef.value = sampleState();
+    mockExecHandlersRef.value["docker compose"] = {
+      stdout: '{"Service":"web","State":"running"}',
+      stderr: "",
+      code: 0,
+    };
+
+    await ps();
+
+    const logOutput = mockConsoleLogRef.value.join("\n");
+    // sampleState().stacks.myapp.deployed_at = "2025-01-15T10:30:00.000Z"
+    // Current time is 2025-01-15T12:30:00.000Z → 2 hours ago
+    expect(logOutput).toContain("2 hours ago");
+    // Should not throw or error
+    expect(mockProcessExitCodeRef.value).toBeUndefined();
+  });
+
+  it("(d) should show only deployed time when deployed_at is more recent than skipped_at", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-15T14:00:00.000Z"));
+
+    mockStateRef.value = stateWithServices({
+      web: makeServiceState({
+        deployed_at: "2025-01-15T13:00:00.000Z",
+        skipped_at: "2025-01-15T10:00:00.000Z",
+      }),
+    });
+    mockExecHandlersRef.value["docker compose"] = {
+      stdout: '{"Service":"web","State":"running"}',
+      stderr: "",
+      code: 0,
+    };
+
+    await ps();
+
+    const logOutput = mockConsoleLogRef.value.join("\n");
+    // deployed_at was 1 hour ago, skipped_at was 4 hours ago (older)
+    // Should show only deployed time, no skip annotation
+    expect(logOutput).toContain("1 hour ago");
+    expect(logOutput).not.toContain("skipped");
   });
 });
