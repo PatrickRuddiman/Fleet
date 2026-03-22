@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isOneShot, getOneShots } from "../src/compose/queries";
+import { alwaysRedeploy as isOneShot, getAlwaysRedeploy as getOneShots } from "../src/compose/queries";
 import { ParsedComposeFile, ParsedService } from "../src/compose/types";
 
 describe("isOneShot", () => {

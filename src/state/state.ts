@@ -1,5 +1,41 @@
+import { z } from "zod";
 import { FleetState, StackState } from "./types";
 import { ExecFn } from "../ssh";
+
+const routeStateSchema = z.object({
+  host: z.string(),
+  service: z.string(),
+  port: z.number(),
+  caddy_id: z.string(),
+});
+
+const serviceStateSchema = z.object({
+  // Core fields — always present
+  definition_hash: z.string(),
+  deployed_at: z.string(),
+  status: z.string(),
+  // Fields added in later versions — optional for backward compat
+  image: z.string().optional(),
+  image_digest: z.string().optional(),
+  env_hash: z.string().optional(),
+  skipped_at: z.string().nullable().optional(),
+  one_shot: z.boolean().optional(),
+});
+
+const stackStateSchema = z.object({
+  path: z.string(),
+  compose_file: z.string(),
+  deployed_at: z.string(),
+  routes: z.array(routeStateSchema),
+  env_hash: z.string().optional(),
+  services: z.record(z.string(), serviceStateSchema).optional(),
+});
+
+const fleetStateSchema = z.object({
+  fleet_root: z.string(),
+  caddy_bootstrapped: z.boolean(),
+  stacks: z.record(z.string(), stackStateSchema),
+});
 
 function defaultState(): FleetState {
   return {
@@ -25,19 +61,14 @@ export async function readState(exec: ExecFn): Promise<FleetState> {
     );
   }
 
-  const obj = parsed as Record<string, unknown>;
-  if (
-    typeof obj.fleet_root !== "string" ||
-    typeof obj.caddy_bootstrapped !== "boolean" ||
-    typeof obj.stacks !== "object" ||
-    obj.stacks === null
-  ) {
+  const validation = fleetStateSchema.safeParse(parsed);
+  if (!validation.success) {
     throw new Error(
-      "Invalid state file structure: ~/.fleet/state.json — expected fleet_root (string), caddy_bootstrapped (boolean), and stacks (object)"
+      `Invalid state file structure: ~/.fleet/state.json — ${validation.error.issues.map((i) => i.message).join(", ")}`
     );
   }
 
-  return parsed as FleetState;
+  return validation.data;
 }
 
 export async function writeState(

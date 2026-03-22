@@ -3,7 +3,7 @@ import path from "path";
 import { ExecFn } from "../ssh";
 import { FleetState, RouteState } from "../state";
 import { FleetConfig, RouteConfig } from "../config";
-import { getServiceNames, ParsedComposeFile, isOneShot } from "../compose";
+import { getServiceNames, ParsedComposeFile, alwaysRedeploy } from "../compose";
 import { resolveFleetRoot, PROXY_DIR } from "../fleet-root";
 import { writeProxyCompose } from "../proxy";
 import {
@@ -213,6 +213,11 @@ export async function resolveSecrets(
       );
     }
     const envFilePath = path.resolve(configDir, config.env.file);
+    if (!envFilePath.startsWith(configDir + path.sep) && envFilePath !== configDir) {
+      throw new Error(
+        `env.file path "${config.env.file}" resolves outside the project directory — path traversal is not allowed`
+      );
+    }
     if (!fs.existsSync(envFilePath)) {
       throw new Error(
         `env.file not found: ${config.env.file} (resolved to ${envFilePath})`
@@ -261,7 +266,8 @@ export async function resolveSecrets(
   if (config.env.infisical) {
     const { token, project_id, environment, path: secretPath } = config.env.infisical;
 
-    const exportCmd = `infisical export --token=${token} --projectId=${project_id} --env=${environment} --path=${secretPath} --format=dotenv > ${stackDir}/.env`;
+    // Pass the token via environment variable to avoid exposing it in the process list (ps aux)
+    const exportCmd = `INFISICAL_TOKEN=${token} infisical export --projectId=${project_id} --env=${environment} --path=${secretPath} --format=dotenv > ${stackDir}/.env`;
     const result = await exec(exportCmd);
 
     if (result.code !== 0) {
@@ -449,7 +455,7 @@ export function printSummary(
   // Determine if this is "nothing changed" mode:
   // all non-one-shot services are in toSkip (and nothing in toDeploy except one-shots, nothing in toRestart)
   const nonOneShotInToDeploy = classification.toDeploy.filter(
-    (name) => !isOneShot(compose.services[name])
+    (name) => !alwaysRedeploy(compose.services[name])
   );
   const nothingChanged = nonOneShotInToDeploy.length === 0 && classification.toRestart.length === 0;
 
@@ -460,7 +466,7 @@ export function printSummary(
 
   for (const name of allServiceNames) {
     const service = compose.services[name];
-    const oneShot = isOneShot(service);
+    const oneShot = alwaysRedeploy(service);
     const reason = reasons[name] ?? "no changes";
 
     if (force) {
@@ -503,11 +509,11 @@ export function printSummary(
 
   // Summary counts line
   const deployedCount = classification.toDeploy.filter(
-    (n) => !isOneShot(compose.services[n])
+    (n) => !alwaysRedeploy(compose.services[n])
   ).length;
   const restartedCount = classification.toRestart.length;
   const oneShotCount = classification.toDeploy.filter(
-    (n) => isOneShot(compose.services[n])
+    (n) => alwaysRedeploy(compose.services[n])
   ).length;
   const skippedCount = classification.toSkip.length;
 
@@ -610,7 +616,7 @@ export async function pullSelectiveImages(
   const pulled: string[] = [];
 
   for (const [serviceName, service] of Object.entries(compose.services)) {
-    const oneShot = isOneShot(service);
+    const oneShot = alwaysRedeploy(service);
     const floating = hasFloatingTag(service.image);
     const inToDeploy = toDeploySet.has(serviceName);
 

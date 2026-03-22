@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isOneShot, getOneShots } from "../src/compose/queries";
+import { alwaysRedeploy as isOneShot, getAlwaysRedeploy as getOneShots } from "../src/compose/queries";
 import { ParsedService, ParsedComposeFile } from "../src/compose/types";
 
 function makeService(restart?: string): ParsedService {

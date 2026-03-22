@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { loadFleetConfig } from "../config";
-import { loadComposeFile, getServiceNames, isOneShot } from "../compose";
+import { loadComposeFile, getServiceNames, alwaysRedeploy } from "../compose";
 import { runAllChecks } from "../validation";
 import { createConnection, Connection } from "../ssh";
 import { readState, writeState, StackState, ServiceState } from "../state";
@@ -59,10 +59,6 @@ export async function deploy(options: DeployOptions): Promise<void> {
     const findingWarnings = findings.filter((f) => f.severity === "warning");
     for (const finding of findingWarnings) {
       warnings.push(`[${finding.code}] ${finding.message}`);
-    }
-
-    if (options.force) {
-      console.log("\n⚠ Force mode — all services will be redeployed\n");
     }
 
     // Step 2: Connect to server
@@ -254,6 +250,14 @@ export async function deploy(options: DeployOptions): Promise<void> {
           throw new Error(`Failed to restart service ${service}: ${restartResult.stderr}`);
         }
       }
+
+      // Remove containers for services that were removed from the compose file
+      const orphanResult = await exec(
+        `docker compose -p ${config.stack.name} -f ${remoteComposePath}${envFileFlag} up -d --remove-orphans --no-recreate`
+      );
+      if (orphanResult.code !== 0) {
+        throw new Error(`Failed to remove orphaned containers: ${orphanResult.stderr}`);
+      }
     }
 
     // Post-deploy digest capture: record actual running image digests for deployed services
@@ -290,7 +294,7 @@ export async function deploy(options: DeployOptions): Promise<void> {
           env_hash: currentEnvHash ?? "",
           deployed_at: now,
           skipped_at: null,
-          one_shot: isOneShot(service),
+          one_shot: alwaysRedeploy(service),
           status: "deployed",
         };
       } else {
@@ -310,7 +314,7 @@ export async function deploy(options: DeployOptions): Promise<void> {
             env_hash: currentEnvHash ?? "",
             deployed_at: now,
             skipped_at: null,
-            one_shot: isOneShot(service),
+            one_shot: alwaysRedeploy(service),
             status: "deployed",
           };
         }

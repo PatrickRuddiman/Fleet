@@ -41,7 +41,20 @@ export function findReservedPortConflicts(
   );
 }
 
-export function isOneShot(service: ParsedService): boolean {
+/**
+ * Returns true for services that should always be redeployed on every `fleet deploy`,
+ * regardless of whether their definition has changed.
+ *
+ * This covers:
+ * - `restart: "no"` — run-once containers that exit after completing their task
+ * - `restart: "on-failure"` — services that only restart on failure; without an
+ *   explicit redeploy they would not pick up new images or config
+ *
+ * Note: this is distinct from the Docker concept of "one-shot" (run once and exit).
+ * The function name reflects the deployment behaviour (always redeploy), not the
+ * Docker restart semantics.
+ */
+export function alwaysRedeploy(service: ParsedService): boolean {
   if (service.restart === undefined || service.restart === null) {
     return false;
   }
@@ -54,8 +67,8 @@ export function isOneShot(service: ParsedService): boolean {
   return false;
 }
 
-export function getOneShots(compose: ParsedComposeFile): string[] {
+export function getAlwaysRedeploy(compose: ParsedComposeFile): string[] {
   return Object.entries(compose.services)
-    .filter(([_, service]) => isOneShot(service))
+    .filter(([_, service]) => alwaysRedeploy(service))
     .map(([name]) => name);
 }

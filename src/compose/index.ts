@@ -6,6 +6,6 @@ export {
   findServicesWithoutImageOrBuild,
   findHostPortBindings,
   findReservedPortConflicts,
-  isOneShot,
-  getOneShots,
+  alwaysRedeploy,
+  getAlwaysRedeploy,
 } from "./queries";

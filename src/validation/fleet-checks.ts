@@ -1,6 +1,29 @@
 import { RouteConfig, FleetConfig, STACK_NAME_REGEX } from "../config/schema";
 import { Finding, Codes } from "./types";
 
+export function checkEnvConflict(config: FleetConfig): Finding[] {
+  if (
+    config.env &&
+    !Array.isArray(config.env) &&
+    "file" in config.env === false &&
+    "entries" in config.env &&
+    "infisical" in config.env &&
+    (config.env as { entries?: unknown[] }).entries &&
+    (config.env as { entries?: unknown[] }).entries!.length > 0 &&
+    (config.env as { infisical?: unknown }).infisical
+  ) {
+    return [
+      {
+        severity: "error",
+        code: Codes.ENV_CONFLICT,
+        message: `"env.entries" and "env.infisical" are both configured, but "env.infisical" will overwrite the ".env" file produced by "env.entries".`,
+        resolution: `Use either "env.entries" or "env.infisical", not both. If you need both sources, consolidate them into a single Infisical project or manage a combined env file.`,
+      },
+    ];
+  }
+  return [];
+}
+
 function isValidFqdn(domain: string): boolean {
   if (domain.length === 0 || domain.length > 253) {
     return false;

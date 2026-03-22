@@ -26,27 +26,35 @@ export function loadFleetConfig(filePath: string): FleetConfig {
 
   const config = result.data;
 
-  // Expand environment variable reference in infisical token
+  // Expand $VAR references in all Infisical fields
   if (
     config.env &&
     !Array.isArray(config.env) &&
     "infisical" in config.env &&
-    config.env.infisical?.token.startsWith("$")
+    config.env.infisical
   ) {
-    const varName = config.env.infisical.token.slice(1);
-    const resolved = process.env[varName];
-    if (resolved === undefined) {
-      throw new Error(
-        `Environment variable "${varName}" referenced by env.infisical.token in ${filePath} is not set`
-      );
-    }
+    const infisical = config.env.infisical;
+    const resolveVar = (value: string, fieldName: string): string => {
+      if (!value.startsWith("$")) return value;
+      const varName = value.slice(1);
+      const resolved = process.env[varName];
+      if (resolved === undefined) {
+        throw new Error(
+          `Environment variable "${varName}" referenced by env.infisical.${fieldName} in ${filePath} is not set`
+        );
+      }
+      return resolved;
+    };
+
     return {
       ...config,
       env: {
         ...config.env,
         infisical: {
-          ...config.env.infisical,
-          token: resolved,
+          token: resolveVar(infisical.token, "token"),
+          project_id: resolveVar(infisical.project_id, "project_id"),
+          environment: resolveVar(infisical.environment, "environment"),
+          path: resolveVar(infisical.path, "path"),
         },
       },
     };

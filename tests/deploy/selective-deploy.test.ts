@@ -260,11 +260,11 @@ describe("selective deploy execution (step 11)", () => {
     expect(upCommands.some((c) => c.includes("up -d api"))).toBe(true);
     expect(upCommands.some((c) => c.includes("up -d db"))).toBe(true);
 
-    // Should NOT have blanket --remove-orphans
-    const blanketUp = capturedCommands.find((c) =>
-      c.includes("--remove-orphans")
+    // Should have orphan cleanup pass at the end (--remove-orphans --no-recreate)
+    const orphanCleanup = capturedCommands.find((c) =>
+      c.includes("--remove-orphans") && c.includes("--no-recreate")
     );
-    expect(blanketUp).toBeUndefined();
+    expect(orphanCleanup).toBeDefined();
   });
 
   // -----------------------------------------------------------------------

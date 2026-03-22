@@ -417,7 +417,8 @@ describe("resolveSecrets", () => {
 
     expect(commands).toHaveLength(2);
     expect(commands[0]).toContain("infisical export");
-    expect(commands[0]).toContain("--token=my-secret-token");
+    expect(commands[0]).toContain("INFISICAL_TOKEN=my-secret-token");
+    expect(commands[0]).not.toContain("--token=my-secret-token");
     expect(commands[0]).toContain("--projectId=proj-456");
     expect(commands[0]).toContain("--env=production");
     expect(commands[0]).toContain("--path=/backend");

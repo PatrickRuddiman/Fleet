@@ -1,6 +1,6 @@
 import type { ParsedComposeFile } from "../compose/types";
 import type { StackState } from "../state/types";
-import { isOneShot } from "../compose/queries";
+import { alwaysRedeploy } from "../compose/queries";
 
 /**
  * Freshly computed hashes for a single service, used as input
@@ -56,8 +56,8 @@ export function classifyServices(
     const stored = stackState.services?.[name];
     const candidate = candidateHashes[name];
 
-    // 1. One-shot services always redeploy
-    if (isOneShot(service)) {
+    // 1. Services with limited restart policies always redeploy
+    if (alwaysRedeploy(service)) {
       toDeploy.push(name);
       reasons[name] = "one-shot";
       continue;

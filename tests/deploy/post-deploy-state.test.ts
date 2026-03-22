@@ -6,7 +6,7 @@ import type {
 import type { StackState, ServiceState } from "../../src/state/types";
 import { classifyServices } from "../../src/deploy/classify";
 import type { CandidateHashes } from "../../src/deploy/classify";
-import { isOneShot } from "../../src/compose/queries";
+import { alwaysRedeploy as isOneShot } from "../../src/compose/queries";
 
 // ---------------------------------------------------------------------------
 // Factory helpers
