@@ -14,3 +14,4 @@ export {
 export { deploy } from "./deploy";
 export { bootstrapInfisicalCli } from "./infisical";
 export { getImageDigest, computeEnvHash, computeDefinitionHash } from "./hashes";
+export { classifyServices, ServiceClassification, CandidateHashes } from "./classify";
