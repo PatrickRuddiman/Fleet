@@ -5,6 +5,7 @@ import { readState, getStack } from "../state";
 import type { ExecFn } from "../ssh";
 import type { FleetState, StackState, RouteState } from "../state";
 import type { ServiceStatus, StackRow } from "./types";
+import { formatRelativeTime } from "../deploy/helpers";
 
 /**
  * Parses the JSON output from `docker compose ps --format json`.
@@ -144,12 +145,38 @@ export async function ps(stackName?: string): Promise<void> {
       let isFirstRow = true;
       for (const svc of services) {
         const routeStrings = routeMap.get(svc.service) ?? [];
+
+        // Compute per-service deployedAt display string
+        let deployedAt: string;
+        const serviceState = stackState.services?.[svc.service];
+
+        if (serviceState) {
+          // Per-service timestamps available (V1.2+ state)
+          const deployedRel = formatRelativeTime(serviceState.deployed_at);
+
+          if (
+            serviceState.skipped_at &&
+            Date.parse(serviceState.skipped_at) > Date.parse(serviceState.deployed_at)
+          ) {
+            const skippedRel = formatRelativeTime(serviceState.skipped_at);
+            deployedAt = `${deployedRel}  (skipped ${skippedRel})`;
+          } else {
+            deployedAt = deployedRel;
+          }
+        } else if (!stackState.services && stackState.deployed_at) {
+          // Pre-V1.2 fallback: stack-level timestamp on first row only
+          deployedAt = isFirstRow ? formatRelativeTime(stackState.deployed_at) : "";
+        } else {
+          // No timestamp available
+          deployedAt = "-";
+        }
+
         rows.push({
           stack: isFirstRow ? name : "",
           service: svc.service,
           status: svc.status,
           routes: routeStrings.join(", "),
-          deployedAt: isFirstRow ? stackState.deployed_at : "",
+          deployedAt,
         });
         isFirstRow = false;
       }
