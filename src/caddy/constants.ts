@@ -1,4 +1,4 @@
-export const CADDY_CONTAINER_NAME = "fleet-caddy";
+export const CADDY_CONTAINER_NAME = "fleet-proxy";
 export const CADDY_ADMIN_URL = "http://localhost:2019";
 export const CADDY_API_ROUTES_PATH = "/config/apps/http/servers/fleet/routes";
 export const CADDY_API_CONFIG_PATH = "/config/";

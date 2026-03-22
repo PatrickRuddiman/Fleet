@@ -117,10 +117,10 @@ describe("stopStack", () => {
     await stopStack(mockExec, "myapp", makeStackState());
 
     expect(mockExec).toHaveBeenCalledWith(
-      "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
+      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
     );
     expect(mockExec).toHaveBeenCalledWith(
-      "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__api"
+      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__api"
     );
   });
 
@@ -192,10 +192,10 @@ describe("stop", () => {
 
     expect(mockProcessExitCodeRef.value).toBeUndefined();
     expect(mockExecCommandsRef.value).toContain(
-      "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
+      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
     );
     expect(mockExecCommandsRef.value).toContain(
-      "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__api"
+      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__api"
     );
     expect(mockExecCommandsRef.value).toContain(
       "docker compose -p myapp stop"

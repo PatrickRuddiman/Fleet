@@ -38,9 +38,9 @@ describe("buildCaddyId", () => {
 
 describe("buildBootstrapCommand", () => {
   describe("without options", () => {
-    it("should target the fleet-caddy container with docker exec", () => {
+    it("should target the fleet-proxy container with docker exec", () => {
       const result = buildBootstrapCommand();
-      expect(result).toContain("docker exec -i fleet-caddy");
+      expect(result).toContain("docker exec -i fleet-proxy");
     });
 
     it("should use curl with silent and fail flags", () => {
@@ -113,9 +113,9 @@ describe("buildAddRouteCommand", () => {
     upstreamPort: 3000,
   };
 
-  it("should target the fleet-caddy container with docker exec", () => {
+  it("should target the fleet-proxy container with docker exec", () => {
     const result = buildAddRouteCommand(defaultOptions);
-    expect(result).toContain("docker exec -i fleet-caddy");
+    expect(result).toContain("docker exec -i fleet-proxy");
   });
 
   it("should use curl with silent and fail flags", () => {
@@ -199,9 +199,9 @@ describe("buildAddRouteCommand", () => {
 });
 
 describe("buildRemoveRouteCommand", () => {
-  it("should target the fleet-caddy container with docker exec", () => {
+  it("should target the fleet-proxy container with docker exec", () => {
     const result = buildRemoveRouteCommand("myapp__web");
-    expect(result).toContain("docker exec fleet-caddy");
+    expect(result).toContain("docker exec fleet-proxy");
   });
 
   it("should use curl with silent and fail flags", () => {
@@ -231,9 +231,9 @@ describe("buildRemoveRouteCommand", () => {
 });
 
 describe("buildListRoutesCommand", () => {
-  it("should target the fleet-caddy container with docker exec", () => {
+  it("should target the fleet-proxy container with docker exec", () => {
     const result = buildListRoutesCommand();
-    expect(result).toContain("docker exec fleet-caddy");
+    expect(result).toContain("docker exec fleet-proxy");
   });
 
   it("should use curl with silent and fail flags", () => {
@@ -260,9 +260,9 @@ describe("buildListRoutesCommand", () => {
 });
 
 describe("buildGetConfigCommand", () => {
-  it("should target the fleet-caddy container with docker exec", () => {
+  it("should target the fleet-proxy container with docker exec", () => {
     const result = buildGetConfigCommand();
-    expect(result).toContain("docker exec fleet-caddy");
+    expect(result).toContain("docker exec fleet-proxy");
   });
 
   it("should use curl with silent and fail flags", () => {

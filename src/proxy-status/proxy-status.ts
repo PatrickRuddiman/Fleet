@@ -190,7 +190,7 @@ export async function proxyStatus(): Promise<void> {
 
     const state = await readState(exec);
 
-    // Check if fleet-caddy container is running
+    // Check if fleet-proxy container is running
     const inspectResult = await exec(
       `docker inspect --format '{{.State.Status}}' ${CADDY_CONTAINER_NAME}`
     );

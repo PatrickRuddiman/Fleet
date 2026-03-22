@@ -1,13 +1,14 @@
 import { ExecFn } from "../ssh";
 import { PROXY_DIR } from "../fleet-root";
+import { CADDY_CONTAINER_NAME } from "../caddy";
 
 const COMPOSE_FILENAME = "compose.yml";
 
 export function generateProxyCompose(): string {
   return `services:
-  fleet-caddy:
+  fleet-proxy:
     image: caddy:2-alpine
-    container_name: fleet-caddy
+    container_name: ${CADDY_CONTAINER_NAME}
     restart: unless-stopped
     ports:
       - "80:80"

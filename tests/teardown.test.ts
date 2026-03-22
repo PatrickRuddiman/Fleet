@@ -146,10 +146,10 @@ describe("teardownStack", () => {
 
     // Should have Caddy DELETE for each route + docker compose down
     expect(commands[0]).toBe(
-      "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
+      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
     );
     expect(commands[1]).toBe(
-      "docker exec fleet-caddy curl -s -f -X DELETE http://localhost:2019/id/myapp__api"
+      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__api"
     );
   });
 

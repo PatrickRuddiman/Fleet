@@ -93,12 +93,12 @@ describe("bootstrap", () => {
         "compose.yml.tmp": SUCCESS,
         "mkdir -p /opt/fleet/proxy": SUCCESS,
         "docker compose -f": SUCCESS,
-        "docker exec fleet-caddy curl -s -f http://localhost:2019/config/": {
+        "docker exec fleet-proxy curl -s -f http://localhost:2019/config/": {
           code: 0,
           stdout: "{}",
           stderr: "",
         },
-        "docker exec -i fleet-caddy": SUCCESS,
+        "docker exec -i fleet-proxy": SUCCESS,
       });
 
       await bootstrap(exec, { acme_email: "admin@example.com" });
@@ -112,7 +112,7 @@ describe("bootstrap", () => {
       ).toBe(true);
       expect(commands.some((c) => c.includes("docker compose -f"))).toBe(true);
       expect(
-        commands.some((c) => c.includes("docker exec fleet-caddy curl"))
+        commands.some((c) => c.includes("docker exec fleet-proxy curl"))
       ).toBe(true);
 
       // Verify order: network create comes before compose up, compose up comes before health check
@@ -123,10 +123,10 @@ describe("bootstrap", () => {
         c.includes("docker compose -f")
       );
       const healthIdx = commands.findIndex((c) =>
-        c.includes("docker exec fleet-caddy curl")
+        c.includes("docker exec fleet-proxy curl")
       );
       const bootstrapCmdIdx = commands.findIndex((c) =>
-        c.includes("docker exec -i fleet-caddy")
+        c.includes("docker exec -i fleet-proxy")
       );
       expect(networkIdx).toBeLessThan(composeUpIdx);
       expect(composeUpIdx).toBeLessThan(healthIdx);
@@ -141,12 +141,12 @@ describe("bootstrap", () => {
         "compose.yml.tmp": SUCCESS,
         "mkdir -p /opt/fleet/proxy": SUCCESS,
         "docker compose -f": SUCCESS,
-        "docker exec fleet-caddy curl -s -f http://localhost:2019/config/": {
+        "docker exec fleet-proxy curl -s -f http://localhost:2019/config/": {
           code: 0,
           stdout: "{}",
           stderr: "",
         },
-        "docker exec -i fleet-caddy": SUCCESS,
+        "docker exec -i fleet-proxy": SUCCESS,
       });
 
       await bootstrap(exec, {});
@@ -173,12 +173,12 @@ describe("bootstrap", () => {
         "compose.yml.tmp": SUCCESS,
         "mkdir -p /opt/fleet/proxy": SUCCESS,
         "docker compose -f": SUCCESS,
-        "docker exec fleet-caddy curl -s -f http://localhost:2019/config/": {
+        "docker exec fleet-proxy curl -s -f http://localhost:2019/config/": {
           code: 0,
           stdout: "{}",
           stderr: "",
         },
-        "docker exec -i fleet-caddy": SUCCESS,
+        "docker exec -i fleet-proxy": SUCCESS,
       });
 
       // Should complete without throwing
@@ -207,7 +207,7 @@ describe("bootstrap", () => {
         if (command.includes("docker compose -f")) return SUCCESS;
         if (
           command.includes(
-            "docker exec fleet-caddy curl -s -f http://localhost:2019/config/"
+            "docker exec fleet-proxy curl -s -f http://localhost:2019/config/"
           )
         ) {
           healthCheckAttempts++;
@@ -216,7 +216,7 @@ describe("bootstrap", () => {
           }
           return { code: 0, stdout: "{}", stderr: "" };
         }
-        if (command.includes("docker exec -i fleet-caddy")) return SUCCESS;
+        if (command.includes("docker exec -i fleet-proxy")) return SUCCESS;
 
         return { code: 1, stdout: "", stderr: `unhandled: ${command}` };
       };
@@ -233,7 +233,7 @@ describe("bootstrap", () => {
       // Verify health check commands were issued multiple times
       const healthChecks = commands.filter((c) =>
         c.includes(
-          "docker exec fleet-caddy curl -s -f http://localhost:2019/config/"
+          "docker exec fleet-proxy curl -s -f http://localhost:2019/config/"
         )
       );
       expect(healthChecks).toHaveLength(3);
@@ -251,7 +251,7 @@ describe("bootstrap", () => {
         if (command.includes("docker compose -f")) return SUCCESS;
         if (
           command.includes(
-            "docker exec fleet-caddy curl -s -f http://localhost:2019/config/"
+            "docker exec fleet-proxy curl -s -f http://localhost:2019/config/"
           )
         ) {
           return { code: 7, stdout: "", stderr: "Connection refused" };
@@ -365,12 +365,12 @@ describe("bootstrap", () => {
         "compose.yml.tmp": SUCCESS,
         "mkdir -p /opt/fleet/proxy": SUCCESS,
         "docker compose -f": SUCCESS,
-        "docker exec fleet-caddy curl -s -f http://localhost:2019/config/": {
+        "docker exec fleet-proxy curl -s -f http://localhost:2019/config/": {
           code: 0,
           stdout: "{}",
           stderr: "",
         },
-        "docker exec -i fleet-caddy": {
+        "docker exec -i fleet-proxy": {
           code: 1,
           stdout: "",
           stderr: "bad config",
@@ -401,12 +401,12 @@ describe("bootstrap", () => {
         if (command.includes("docker compose -f")) return SUCCESS;
         if (
           command.includes(
-            "docker exec fleet-caddy curl -s -f http://localhost:2019/config/"
+            "docker exec fleet-proxy curl -s -f http://localhost:2019/config/"
           )
         ) {
           return { code: 0, stdout: "{}", stderr: "" };
         }
-        if (command.includes("docker exec -i fleet-caddy")) return SUCCESS;
+        if (command.includes("docker exec -i fleet-proxy")) return SUCCESS;
         return { code: 1, stdout: "", stderr: `unhandled: ${command}` };
       };
 
@@ -425,12 +425,12 @@ describe("bootstrap", () => {
         "compose.yml.tmp": SUCCESS,
         "mkdir -p /opt/fleet/proxy": SUCCESS,
         "docker compose -f": SUCCESS,
-        "docker exec fleet-caddy curl -s -f http://localhost:2019/config/": {
+        "docker exec fleet-proxy curl -s -f http://localhost:2019/config/": {
           code: 0,
           stdout: "{}",
           stderr: "",
         },
-        "docker exec -i fleet-caddy": SUCCESS,
+        "docker exec -i fleet-proxy": SUCCESS,
       });
 
       await bootstrap(exec, { acme_email: "test@example.com" });
@@ -439,7 +439,7 @@ describe("bootstrap", () => {
         acme_email: "test@example.com",
       });
       const bootstrapCmd = commands.find((c) =>
-        c.includes("docker exec -i fleet-caddy")
+        c.includes("docker exec -i fleet-proxy")
       );
       expect(bootstrapCmd).toBe(expectedCommand);
     });
@@ -452,12 +452,12 @@ describe("bootstrap", () => {
         "compose.yml.tmp": SUCCESS,
         "mkdir -p /opt/fleet/proxy": SUCCESS,
         "docker compose -f": SUCCESS,
-        "docker exec fleet-caddy curl -s -f http://localhost:2019/config/": {
+        "docker exec fleet-proxy curl -s -f http://localhost:2019/config/": {
           code: 0,
           stdout: "{}",
           stderr: "",
         },
-        "docker exec -i fleet-caddy": SUCCESS,
+        "docker exec -i fleet-proxy": SUCCESS,
       });
 
       await bootstrap(exec, {});
@@ -466,7 +466,7 @@ describe("bootstrap", () => {
         acme_email: undefined,
       });
       const bootstrapCmd = commands.find((c) =>
-        c.includes("docker exec -i fleet-caddy")
+        c.includes("docker exec -i fleet-proxy")
       );
       expect(bootstrapCmd).toBe(expectedCommand);
     });
