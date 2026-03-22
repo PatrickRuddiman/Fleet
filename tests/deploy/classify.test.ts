@@ -92,6 +92,7 @@ describe("classifyServices", () => {
       expect(result.toDeploy).toContain("migrate");
       expect(result.toRestart).not.toContain("migrate");
       expect(result.toSkip).not.toContain("migrate");
+      expect(result.reasons.migrate).toBe("one-shot");
     });
 
     it("classifies a new service (not in stackState) into toDeploy", () => {
@@ -112,6 +113,7 @@ describe("classifyServices", () => {
       expect(result.toDeploy).toContain("web");
       expect(result.toRestart).not.toContain("web");
       expect(result.toSkip).not.toContain("web");
+      expect(result.reasons.web).toBe("new service");
     });
 
     it("classifies a service with changed definition_hash into toDeploy", () => {
@@ -132,6 +134,7 @@ describe("classifyServices", () => {
       expect(result.toDeploy).toContain("web");
       expect(result.toRestart).not.toContain("web");
       expect(result.toSkip).not.toContain("web");
+      expect(result.reasons.web).toBe("definition changed");
     });
 
     it("classifies a service with changed image_digest into toDeploy", () => {
@@ -158,6 +161,31 @@ describe("classifyServices", () => {
       expect(result.toDeploy).toContain("web");
       expect(result.toRestart).not.toContain("web");
       expect(result.toSkip).not.toContain("web");
+      expect(result.reasons.web).toBe("image changed (sha256: → sha256:)");
+    });
+
+    it("records shortened digest values in the image-changed reason", () => {
+      const compose: ParsedComposeFile = {
+        services: {
+          web: makeService(),
+        },
+      };
+      const stackState = makeStackState({
+        web: makeServiceState({
+          definition_hash: "sha256:aaa",
+          image_digest: "abc1234xyz",
+        }),
+      });
+      const candidateHashes: Record<string, CandidateHashes> = {
+        web: makeCandidateHashes({
+          definitionHash: "sha256:aaa",
+          imageDigest: "def5678xyz",
+        }),
+      };
+
+      const result = classifyServices(compose, stackState, candidateHashes, false);
+
+      expect(result.reasons.web).toBe("image changed (abc1234 → def5678)");
     });
   });
 
@@ -183,6 +211,7 @@ describe("classifyServices", () => {
       expect(result.toRestart).toContain("web");
       expect(result.toDeploy).not.toContain("web");
       expect(result.toSkip).not.toContain("web");
+      expect(result.reasons.web).toBe("env changed");
     });
   });
 
@@ -208,6 +237,7 @@ describe("classifyServices", () => {
       expect(result.toSkip).toContain("web");
       expect(result.toDeploy).not.toContain("web");
       expect(result.toRestart).not.toContain("web");
+      expect(result.reasons.web).toBe("no changes");
     });
   });
 
@@ -238,6 +268,7 @@ describe("classifyServices", () => {
 
       expect(result.toDeploy).not.toContain("web");
       expect(result.toSkip).toContain("web");
+      expect(result.reasons.web).toBe("no changes");
     });
 
     it("does not trigger deploy when candidate imageDigest is null even if stored differs", () => {
@@ -263,6 +294,7 @@ describe("classifyServices", () => {
 
       expect(result.toDeploy).not.toContain("web");
       expect(result.toSkip).toContain("web");
+      expect(result.reasons.web).toBe("no changes");
     });
   });
 
@@ -292,6 +324,9 @@ describe("classifyServices", () => {
       expect(result.toDeploy).toContain("worker");
       expect(result.toRestart).toHaveLength(0);
       expect(result.toSkip).toHaveLength(0);
+      expect(result.reasons.web).toBe("new service");
+      expect(result.reasons.api).toBe("new service");
+      expect(result.reasons.worker).toBe("new service");
     });
   });
 
@@ -313,6 +348,7 @@ describe("classifyServices", () => {
       expect(result.toDeploy).toHaveLength(0);
       expect(result.toRestart).toHaveLength(0);
       expect(result.toSkip).toHaveLength(0);
+      expect(result.reasons).toEqual({});
     });
   });
 
@@ -354,6 +390,10 @@ describe("classifyServices", () => {
       expect(result.toRestart).toContain("worker");
       // nothing should be skipped
       expect(result.toSkip).toHaveLength(0);
+      expect(result.reasons.migrate).toBe("one-shot");
+      expect(result.reasons.web).toBe("definition changed");
+      expect(result.reasons.api).toBe("new service");
+      expect(result.reasons.worker).toBe("env changed");
     });
 
     it("correctly classifies multiple services with envHashChanged false", () => {
@@ -385,6 +425,9 @@ describe("classifyServices", () => {
       expect(result.toSkip).toContain("db");
       // nothing should be restarted
       expect(result.toRestart).toHaveLength(0);
+      expect(result.reasons.migrate).toBe("one-shot");
+      expect(result.reasons.web).toBe("definition changed");
+      expect(result.reasons.db).toBe("no changes");
     });
   });
 
@@ -413,6 +456,151 @@ describe("classifyServices", () => {
       const result = classifyServices(compose, stackState, candidateHashes, false);
 
       expect(result.toDeploy).toEqual(["alpha", "bravo", "charlie", "delta"]);
+      expect(result.reasons.alpha).toBe("new service");
+      expect(result.reasons.bravo).toBe("new service");
+      expect(result.reasons.charlie).toBe("new service");
+      expect(result.reasons.delta).toBe("new service");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // reason tracking
+  // -----------------------------------------------------------------------
+  describe("reason tracking", () => {
+    it("returns 'one-shot' reason for one-shot services", () => {
+      const compose: ParsedComposeFile = {
+        services: {
+          migrate: makeService({ restart: "no" }),
+        },
+      };
+      const stackState = makeStackState({
+        migrate: makeServiceState(),
+      });
+      const candidateHashes: Record<string, CandidateHashes> = {
+        migrate: makeCandidateHashes(),
+      };
+
+      const result = classifyServices(compose, stackState, candidateHashes, false);
+
+      expect(result.reasons["migrate"]).toBe("one-shot");
+    });
+
+    it("returns 'new service' reason for services not in stack state", () => {
+      const compose: ParsedComposeFile = {
+        services: {
+          web: makeService(),
+        },
+      };
+      const stackState = makeStackState({});
+      const candidateHashes: Record<string, CandidateHashes> = {
+        web: makeCandidateHashes(),
+      };
+
+      const result = classifyServices(compose, stackState, candidateHashes, false);
+
+      expect(result.reasons["web"]).toBe("new service");
+    });
+
+    it("returns 'definition changed' reason when definition hash differs", () => {
+      const compose: ParsedComposeFile = {
+        services: {
+          web: makeService(),
+        },
+      };
+      const stackState = makeStackState({
+        web: makeServiceState({ definition_hash: "sha256:old" }),
+      });
+      const candidateHashes: Record<string, CandidateHashes> = {
+        web: makeCandidateHashes({ definitionHash: "sha256:new" }),
+      };
+
+      const result = classifyServices(compose, stackState, candidateHashes, false);
+
+      expect(result.reasons["web"]).toBe("definition changed");
+    });
+
+    it("returns 'image changed' reason with shortened digests when image digest differs", () => {
+      const compose: ParsedComposeFile = {
+        services: {
+          web: makeService(),
+        },
+      };
+      const stackState = makeStackState({
+        web: makeServiceState({
+          definition_hash: "sha256:aaa",
+          image_digest: "sha256:abcdef1234567890",
+        }),
+      });
+      const candidateHashes: Record<string, CandidateHashes> = {
+        web: makeCandidateHashes({
+          definitionHash: "sha256:aaa",
+          imageDigest: "sha256:zyxwvu9876543210",
+        }),
+      };
+
+      const result = classifyServices(compose, stackState, candidateHashes, false);
+
+      expect(result.reasons["web"]).toBe("image changed (sha256: \u2192 sha256:)");
+    });
+
+    it("displays first 7 characters of each digest in image-changed reason", () => {
+      const compose: ParsedComposeFile = {
+        services: {
+          web: makeService(),
+        },
+      };
+      const stackState = makeStackState({
+        web: makeServiceState({
+          definition_hash: "sha256:aaa",
+          image_digest: "olddigest1234567",
+        }),
+      });
+      const candidateHashes: Record<string, CandidateHashes> = {
+        web: makeCandidateHashes({
+          definitionHash: "sha256:aaa",
+          imageDigest: "newdigest7654321",
+        }),
+      };
+
+      const result = classifyServices(compose, stackState, candidateHashes, false);
+
+      expect(result.reasons["web"]).toBe("image changed (olddige \u2192 newdige)");
+    });
+
+    it("returns 'env changed' reason when only env hash changed", () => {
+      const compose: ParsedComposeFile = {
+        services: {
+          web: makeService(),
+        },
+      };
+      const stackState = makeStackState({
+        web: makeServiceState(),
+      });
+      const candidateHashes: Record<string, CandidateHashes> = {
+        web: makeCandidateHashes(),
+      };
+
+      const result = classifyServices(compose, stackState, candidateHashes, true);
+
+      expect(result.reasons["web"]).toBe("env changed");
+    });
+
+    it("returns 'no changes' reason when nothing changed", () => {
+      const compose: ParsedComposeFile = {
+        services: {
+          web: makeService(),
+        },
+      };
+      const stackState = makeStackState({
+        web: makeServiceState(),
+      });
+      const candidateHashes: Record<string, CandidateHashes> = {
+        web: makeCandidateHashes(),
+      };
+
+      const result = classifyServices(compose, stackState, candidateHashes, false);
+
+      expect(result.reasons["web"]).toBe("no changes");
     });
   });
 });

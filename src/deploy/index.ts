@@ -12,6 +12,7 @@ export {
   configHasSecrets,
   hasFloatingTag,
   pullSelectiveImages,
+  formatRelativeTime,
 } from "./helpers";
 export { deploy } from "./deploy";
 export { bootstrapInfisicalCli } from "./infisical";
