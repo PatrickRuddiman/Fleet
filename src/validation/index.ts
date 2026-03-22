@@ -5,6 +5,7 @@ export {
   checkServiceNotFound,
   checkPortExposed,
   checkNoImageOrBuild,
+  checkOneShotNoMaxAttempts,
 } from "./compose-checks";
 
 import { FleetConfig } from "../config/schema";
@@ -16,6 +17,7 @@ import {
   checkServiceNotFound,
   checkPortExposed,
   checkNoImageOrBuild,
+  checkOneShotNoMaxAttempts,
 } from "./compose-checks";
 
 export function runAllChecks(
@@ -31,5 +33,6 @@ export function runAllChecks(
     ...checkServiceNotFound(config, compose),
     ...checkPortExposed(compose),
     ...checkNoImageOrBuild(compose),
+    ...checkOneShotNoMaxAttempts(compose),
   ];
 }

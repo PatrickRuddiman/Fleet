@@ -17,6 +17,7 @@ export interface ParsedService {
   working_dir?: string;
   healthcheck?: unknown;
   restart?: string;
+  restartPolicyMaxAttempts?: number;
 }
 
 export interface ParsedComposeFile {
