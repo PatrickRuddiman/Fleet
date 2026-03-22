@@ -13,4 +13,4 @@ export {
 } from "./helpers";
 export { deploy } from "./deploy";
 export { bootstrapInfisicalCli } from "./infisical";
-export { getImageDigest } from "./hashes";
+export { getImageDigest, computeEnvHash } from "./hashes";
