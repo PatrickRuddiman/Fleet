@@ -29,9 +29,9 @@ export const envSchema = z.object({
 });
 
 export const healthCheckSchema = z.object({
-  path: z.string(),
-  timeout_seconds: z.number().int().default(30),
-  interval_seconds: z.number().int().default(5),
+  path: z.string().default("/"),
+  timeout_seconds: z.number().int().default(60),
+  interval_seconds: z.number().int().default(2),
 });
 
 export const routeSchema = z.object({

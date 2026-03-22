@@ -89,22 +89,31 @@ describe("fleetConfigSchema", () => {
       expect(result.routes[0].tls).toBe(true);
     });
 
-    it("should default health_check.timeout_seconds to 30", () => {
+    it("should default health_check.timeout_seconds to 60", () => {
       const config = {
         ...minimalConfig,
         routes: [{ domain: "example.com", port: 3000, health_check: { path: "/health" } }],
       };
       const result = fleetConfigSchema.parse(config);
-      expect(result.routes[0].health_check!.timeout_seconds).toBe(30);
+      expect(result.routes[0].health_check!.timeout_seconds).toBe(60);
     });
 
-    it("should default health_check.interval_seconds to 5", () => {
+    it("should default health_check.interval_seconds to 2", () => {
       const config = {
         ...minimalConfig,
         routes: [{ domain: "example.com", port: 3000, health_check: { path: "/health" } }],
       };
       const result = fleetConfigSchema.parse(config);
-      expect(result.routes[0].health_check!.interval_seconds).toBe(5);
+      expect(result.routes[0].health_check!.interval_seconds).toBe(2);
+    });
+
+    it("should default health_check.path to '/'", () => {
+      const config = {
+        ...minimalConfig,
+        routes: [{ domain: "example.com", port: 3000, health_check: {} }],
+      };
+      const result = fleetConfigSchema.parse(config);
+      expect(result.routes[0].health_check!.path).toBe("/");
     });
   });
 

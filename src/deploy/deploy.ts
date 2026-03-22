@@ -180,9 +180,13 @@ export async function deploy(options: DeployOptions): Promise<void> {
       console.log("Step 13: Running health checks...");
       for (const route of config.routes) {
         if (route.health_check) {
+          const serviceName =
+            route.service || getServiceNames(compose)[0];
           const warning = await checkHealth(
             exec,
-            route.domain,
+            config.stack.name,
+            serviceName,
+            route.port,
             route.health_check
           );
           if (warning) {

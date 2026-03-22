@@ -564,10 +564,10 @@ describe("attachNetworks", () => {
 describe("checkHealth", () => {
   it("should return null when health check succeeds", async () => {
     const exec = createMockExec({
-      curl: { stdout: "200", stderr: "", code: 0 },
+      "docker exec": { stdout: "200", stderr: "", code: 0 },
     });
 
-    const result = await checkHealth(exec, "myapp.example.com", {
+    const result = await checkHealth(exec, "myapp", "web", 3000, {
       path: "/health",
       timeout_seconds: 10,
       interval_seconds: 5,
@@ -578,11 +578,11 @@ describe("checkHealth", () => {
 
   it("should return a warning string when health check times out", async () => {
     const exec = createMockExec({
-      curl: { stdout: "503", stderr: "", code: 0 },
+      "docker exec": { stdout: "503", stderr: "", code: 0 },
       sleep: { stdout: "", stderr: "", code: 0 },
     });
 
-    const result = await checkHealth(exec, "myapp.example.com", {
+    const result = await checkHealth(exec, "myapp", "web", 3000, {
       path: "/health",
       timeout_seconds: 10,
       interval_seconds: 5,
@@ -590,7 +590,46 @@ describe("checkHealth", () => {
 
     expect(result).toBeTypeOf("string");
     expect(result).toContain("timed out");
-    expect(result).toContain("myapp.example.com/health");
+    expect(result).toContain("myapp-web-1");
+    expect(result).toContain("/health");
+    expect(result).toContain("last status:");
+    expect(result).toContain("HTTP 503");
+  });
+
+  it("should include error details when docker exec fails", async () => {
+    const exec = createMockExec({
+      "docker exec": { stdout: "", stderr: "curl not found", code: 126 },
+      sleep: { stdout: "", stderr: "", code: 0 },
+    });
+
+    const result = await checkHealth(exec, "myapp", "api", 8080, {
+      path: "/",
+      timeout_seconds: 4,
+      interval_seconds: 2,
+    });
+
+    expect(result).toBeTypeOf("string");
+    expect(result).toContain("timed out");
+    expect(result).toContain("myapp-api-1");
+    expect(result).toContain("last status:");
+    expect(result).toContain("curl not found");
+  });
+
+  it("should use docker exec to poll the container directly", async () => {
+    const commands: string[] = [];
+    const exec: ExecFn = async (cmd) => {
+      commands.push(cmd);
+      return { stdout: "200", stderr: "", code: 0 };
+    };
+
+    await checkHealth(exec, "mystack", "web", 3000, {
+      path: "/health",
+      timeout_seconds: 10,
+      interval_seconds: 5,
+    });
+
+    expect(commands[0]).toContain("docker exec mystack-web-1");
+    expect(commands[0]).toContain("http://localhost:3000/health");
   });
 });
 
