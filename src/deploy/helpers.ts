@@ -11,6 +11,7 @@ import {
   buildBootstrapCommand,
   buildRoute,
   buildReplaceRoutesCommand,
+  buildCreateRoutesCommand,
   buildListRoutesCommand,
   buildCaddyId,
 } from "../caddy";
@@ -421,8 +422,12 @@ export async function registerRoutes(
     });
   }
 
-  // Replace all routes in a single PUT — one reload, no race with TLS challenges
-  const replaceResult = await exec(buildReplaceRoutesCommand([...otherRoutes, ...newRoutes]));
+  // PATCH replaces an existing routes array; PUT creates it if absent
+  const mergedRoutes = [...otherRoutes, ...newRoutes];
+  const routesCmd = listResult.code === 0
+    ? buildReplaceRoutesCommand(mergedRoutes)
+    : buildCreateRoutesCommand(mergedRoutes);
+  const replaceResult = await exec(routesCmd);
   if (replaceResult.code !== 0) {
     throw new Error(`Failed to register routes: ${replaceResult.stderr}`);
   }

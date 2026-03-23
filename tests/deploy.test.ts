@@ -669,11 +669,11 @@ describe("checkHealth", () => {
 });
 
 describe("registerRoutes", () => {
-  it("should register a new route and return route states", async () => {
+  it("should use PATCH when routes array already exists", async () => {
     const commands: string[] = [];
     const exec: ExecFn = async (cmd) => {
       commands.push(cmd);
-      // GET returns empty array (no existing routes)
+      // GET succeeds with empty array
       return { stdout: cmd.includes("-X") ? "" : "[]", stderr: "", code: 0 };
     };
 
@@ -684,11 +684,9 @@ describe("registerRoutes", () => {
     const result = await registerRoutes(exec, "myapp", routes);
 
     expect(commands).toHaveLength(2);
-    // First command: GET current routes (no -X flag)
     expect(commands[0]).not.toContain("-X");
     expect(commands[0]).toContain("routes");
-    // Second command: PUT with new routes
-    expect(commands[1]).toContain("-X PUT");
+    expect(commands[1]).toContain("-X PATCH");
     expect(commands[1]).toContain("myapp.example.com");
     expect(result).toHaveLength(1);
     expect(result[0].host).toBe("myapp.example.com");
@@ -697,7 +695,30 @@ describe("registerRoutes", () => {
     expect(result[0].caddy_id).toBe("myapp__default");
   });
 
-  it("should replace this stack's routes while preserving routes from other stacks", async () => {
+  it("should use PUT when routes array does not exist", async () => {
+    const commands: string[] = [];
+    const exec: ExecFn = async (cmd) => {
+      commands.push(cmd);
+      // GET fails — routes path doesn't exist
+      if (!cmd.includes("-X")) {
+        return { stdout: "", stderr: "not found", code: 1 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    const routes = [
+      { domain: "myapp.example.com", port: 3000, tls: true },
+    ] as RouteConfig[];
+
+    const result = await registerRoutes(exec, "myapp", routes);
+
+    expect(commands).toHaveLength(2);
+    expect(commands[1]).toContain("-X PUT");
+    expect(commands[1]).toContain("myapp.example.com");
+    expect(result[0].caddy_id).toBe("myapp__default");
+  });
+
+  it("should PATCH preserving other stacks' routes while replacing this stack's", async () => {
     const existingOtherRoute = { "@id": "other__web", match: [{ host: ["other.example.com"] }], handle: [] };
     const existingThisRoute = { "@id": "mystack__api", match: [{ host: ["old.example.com"] }], handle: [] };
 
@@ -716,13 +737,10 @@ describe("registerRoutes", () => {
 
     const result = await registerRoutes(exec, "mystack", routes);
 
-    expect(commands[1]).toContain("-X PUT");
-    // New route for this stack
+    expect(commands[1]).toContain("-X PATCH");
     expect(commands[1]).toContain("api.example.com");
     expect(commands[1]).toContain("mystack__api");
-    // Other stack's route preserved
     expect(commands[1]).toContain("other__web");
-    // Old route for this stack removed
     expect(commands[1]).not.toContain("old.example.com");
     expect(result[0].caddy_id).toBe("mystack__api");
   });

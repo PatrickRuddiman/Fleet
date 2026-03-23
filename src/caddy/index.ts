@@ -14,6 +14,7 @@ export {
   buildRoute,
   buildAddRouteCommand,
   buildReplaceRoutesCommand,
+  buildCreateRoutesCommand,
   buildRemoveRouteCommand,
   buildListRoutesCommand,
   buildGetConfigCommand,

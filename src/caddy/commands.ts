@@ -70,6 +70,11 @@ export function buildAddRouteCommand(options: AddRouteOptions): string {
 
 export function buildReplaceRoutesCommand(routes: object[]): string {
   const json = JSON.stringify(routes, null, 2);
+  return `docker exec -i ${CADDY_CONTAINER_NAME} sh -c 'curl -s -f -X PATCH -H "Content-Type: application/json" -d @- ${CADDY_ADMIN_URL}${CADDY_API_ROUTES_PATH}' << 'FLEET_JSON'\n${json}\nFLEET_JSON`;
+}
+
+export function buildCreateRoutesCommand(routes: object[]): string {
+  const json = JSON.stringify(routes, null, 2);
   return `docker exec -i ${CADDY_CONTAINER_NAME} sh -c 'curl -s -f -X PUT -H "Content-Type: application/json" -d @- ${CADDY_ADMIN_URL}${CADDY_API_ROUTES_PATH}' << 'FLEET_JSON'\n${json}\nFLEET_JSON`;
 }
 
