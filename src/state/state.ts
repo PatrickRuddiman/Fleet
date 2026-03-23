@@ -76,17 +76,23 @@ export async function writeState(
   state: FleetState
 ): Promise<void> {
   const json = JSON.stringify(state, null, 2);
-  const command = `mkdir -p ~/.fleet && cat << 'FLEET_EOF' > ~/.fleet/state.json.tmp\n${json}\nFLEET_EOF\n&& mv ~/.fleet/state.json.tmp ~/.fleet/state.json`;
 
-  const result = await exec(command);
+  const mkdirResult = await exec("mkdir -p ~/.fleet");
+  if (mkdirResult.code !== 0) {
+    const detail = mkdirResult.stderr ? ` — ${mkdirResult.stderr}` : "";
+    throw new Error(`Failed to write state file: command exited with code ${mkdirResult.code}${detail}`);
+  }
 
-  if (result.code !== 0) {
-    const detail = result.stderr
-      ? ` — ${result.stderr}`
-      : "";
-    throw new Error(
-      `Failed to write state file: command exited with code ${result.code}${detail}`
-    );
+  const writeResult = await exec(`cat << 'FLEET_EOF' > ~/.fleet/state.json.tmp\n${json}\nFLEET_EOF`);
+  if (writeResult.code !== 0) {
+    const detail = writeResult.stderr ? ` — ${writeResult.stderr}` : "";
+    throw new Error(`Failed to write state file: command exited with code ${writeResult.code}${detail}`);
+  }
+
+  const mvResult = await exec("mv ~/.fleet/state.json.tmp ~/.fleet/state.json");
+  if (mvResult.code !== 0) {
+    const detail = mvResult.stderr ? ` — ${mvResult.stderr}` : "";
+    throw new Error(`Failed to write state file: command exited with code ${mvResult.code}${detail}`);
   }
 }
 

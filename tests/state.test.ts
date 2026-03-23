@@ -268,41 +268,43 @@ describe("readState", () => {
 
 describe("writeState", () => {
   it("should produce a command that includes mkdir -p ~/.fleet", async () => {
-    let capturedCommand = "";
+    const commands: string[] = [];
     const exec: ExecFn = async (command: string) => {
-      capturedCommand = command;
+      commands.push(command);
       return { stdout: "", stderr: "", code: 0 };
     };
 
     await writeState(exec, sampleState());
 
-    expect(capturedCommand).toContain("mkdir -p ~/.fleet");
+    expect(commands.some((c) => c.includes("mkdir -p ~/.fleet"))).toBe(true);
   });
 
   it("should produce a command that includes atomic rename via mv", async () => {
-    let capturedCommand = "";
+    const commands: string[] = [];
     const exec: ExecFn = async (command: string) => {
-      capturedCommand = command;
+      commands.push(command);
       return { stdout: "", stderr: "", code: 0 };
     };
 
     await writeState(exec, sampleState());
 
-    expect(capturedCommand).toContain(
-      "mv ~/.fleet/state.json.tmp ~/.fleet/state.json"
-    );
+    expect(
+      commands.some((c) =>
+        c.includes("mv ~/.fleet/state.json.tmp ~/.fleet/state.json")
+      )
+    ).toBe(true);
   });
 
   it("should serialize JSON with 2-space indent", async () => {
-    let capturedCommand = "";
+    const commands: string[] = [];
     const exec: ExecFn = async (command: string) => {
-      capturedCommand = command;
+      commands.push(command);
       return { stdout: "", stderr: "", code: 0 };
     };
 
     await writeState(exec, sampleState());
 
-    expect(capturedCommand).toContain(JSON.stringify(sampleState(), null, 2));
+    expect(commands.some((c) => c.includes(JSON.stringify(sampleState(), null, 2)))).toBe(true);
   });
 
   it("should throw on non-zero exit code", async () => {
@@ -318,9 +320,9 @@ describe("writeState", () => {
   });
 
   it("should include env_hash and services in serialized output when present", async () => {
-    let capturedCommand = "";
+    const commands: string[] = [];
     const exec: ExecFn = async (command: string) => {
-      capturedCommand = command;
+      commands.push(command);
       return { stdout: "", stderr: "", code: 0 };
     };
 
@@ -352,14 +354,15 @@ describe("writeState", () => {
 
     await writeState(exec, stateWithServices);
 
-    expect(capturedCommand).toContain('"env_hash": "envhash123"');
-    expect(capturedCommand).toContain('"definition_hash": "defhash1"');
-    expect(capturedCommand).toContain('"image_digest": "sha256:abc"');
-    expect(capturedCommand).toContain('"one_shot": false');
-    expect(capturedCommand).toContain('"status": "running"');
-    expect(capturedCommand).toContain('"image": "node:20-alpine"');
-    expect(capturedCommand).toContain('"skipped_at": null');
-    expect(capturedCommand).toContain(JSON.stringify(stateWithServices, null, 2));
+    const joined = commands.join("\n");
+    expect(joined).toContain('"env_hash": "envhash123"');
+    expect(joined).toContain('"definition_hash": "defhash1"');
+    expect(joined).toContain('"image_digest": "sha256:abc"');
+    expect(joined).toContain('"one_shot": false');
+    expect(joined).toContain('"status": "running"');
+    expect(joined).toContain('"image": "node:20-alpine"');
+    expect(joined).toContain('"skipped_at": null');
+    expect(joined).toContain(JSON.stringify(stateWithServices, null, 2));
   });
 });
 

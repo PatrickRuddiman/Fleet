@@ -88,6 +88,7 @@ describe("bootstrap", () => {
         "cat ~/.fleet/state.json": DEFAULT_STATE,
         "mkdir -p /opt/fleet": SUCCESS,
         "echo '/opt/fleet' > ~/.fleet-root": SUCCESS,
+        "mkdir -p ~/.fleet": SUCCESS,
         "state.json.tmp": SUCCESS,
         "docker network create fleet-proxy": SUCCESS,
         "compose.yml.tmp": SUCCESS,
@@ -136,6 +137,7 @@ describe("bootstrap", () => {
     it("should skip resolveFleetRoot when fleet_root is already set", async () => {
       const { exec, commands } = createMockExec({
         "cat ~/.fleet/state.json": UNBOOTSTRAPPED_STATE,
+        "mkdir -p ~/.fleet": SUCCESS,
         "state.json.tmp": SUCCESS,
         "docker network create fleet-proxy": SUCCESS,
         "compose.yml.tmp": SUCCESS,
@@ -164,6 +166,7 @@ describe("bootstrap", () => {
     it("should tolerate 'already exists' error on network creation", async () => {
       const { exec, commands } = createMockExec({
         "cat ~/.fleet/state.json": UNBOOTSTRAPPED_STATE,
+        "mkdir -p ~/.fleet": SUCCESS,
         "state.json.tmp": SUCCESS,
         "docker network create fleet-proxy": {
           code: 0,
@@ -199,6 +202,7 @@ describe("bootstrap", () => {
 
         if (command.includes("cat ~/.fleet/state.json"))
           return UNBOOTSTRAPPED_STATE;
+        if (command.includes("mkdir -p ~/.fleet")) return SUCCESS;
         if (command.includes("state.json.tmp")) return SUCCESS;
         if (command.includes("docker network create fleet-proxy"))
           return SUCCESS;
@@ -243,6 +247,7 @@ describe("bootstrap", () => {
       const exec: ExecFn = async (command: string): Promise<ExecResult> => {
         if (command.includes("cat ~/.fleet/state.json"))
           return UNBOOTSTRAPPED_STATE;
+        if (command.includes("mkdir -p ~/.fleet")) return SUCCESS;
         if (command.includes("state.json.tmp")) return SUCCESS;
         if (command.includes("docker network create fleet-proxy"))
           return SUCCESS;
@@ -278,6 +283,7 @@ describe("bootstrap", () => {
     it("should throw descriptive error when proxy directory creation fails", async () => {
       const { exec } = createMockExec({
         "cat ~/.fleet/state.json": UNBOOTSTRAPPED_STATE,
+        "mkdir -p ~/.fleet": SUCCESS,
         "state.json.tmp": SUCCESS,
         "docker network create fleet-proxy": SUCCESS,
         "mkdir -p /opt/fleet/proxy": {
@@ -293,6 +299,7 @@ describe("bootstrap", () => {
 
       const { exec: exec2 } = createMockExec({
         "cat ~/.fleet/state.json": UNBOOTSTRAPPED_STATE,
+        "mkdir -p ~/.fleet": SUCCESS,
         "state.json.tmp": SUCCESS,
         "docker network create fleet-proxy": SUCCESS,
         "mkdir -p /opt/fleet/proxy": {
@@ -309,6 +316,7 @@ describe("bootstrap", () => {
       // because writeProxyCompose command contains both substrings
       const { exec } = createMockExec({
         "cat ~/.fleet/state.json": UNBOOTSTRAPPED_STATE,
+        "mkdir -p ~/.fleet": SUCCESS,
         "state.json.tmp": SUCCESS,
         "docker network create fleet-proxy": SUCCESS,
         "compose.yml.tmp": {
@@ -327,6 +335,7 @@ describe("bootstrap", () => {
     it("should throw descriptive error when Caddy container start fails", async () => {
       const { exec } = createMockExec({
         "cat ~/.fleet/state.json": UNBOOTSTRAPPED_STATE,
+        "mkdir -p ~/.fleet": SUCCESS,
         "state.json.tmp": SUCCESS,
         "docker network create fleet-proxy": SUCCESS,
         "compose.yml.tmp": SUCCESS,
@@ -344,6 +353,7 @@ describe("bootstrap", () => {
 
       const { exec: exec2 } = createMockExec({
         "cat ~/.fleet/state.json": UNBOOTSTRAPPED_STATE,
+        "mkdir -p ~/.fleet": SUCCESS,
         "state.json.tmp": SUCCESS,
         "docker network create fleet-proxy": SUCCESS,
         "compose.yml.tmp": SUCCESS,
@@ -360,6 +370,7 @@ describe("bootstrap", () => {
     it("should throw descriptive error when initial Caddy configuration fails", async () => {
       const { exec } = createMockExec({
         "cat ~/.fleet/state.json": UNBOOTSTRAPPED_STATE,
+        "mkdir -p ~/.fleet": SUCCESS,
         "state.json.tmp": SUCCESS,
         "docker network create fleet-proxy": SUCCESS,
         "compose.yml.tmp": SUCCESS,
@@ -384,14 +395,16 @@ describe("bootstrap", () => {
 
     it("should throw descriptive error when final state write fails", async () => {
       // writeState is called TWICE (initial state write + final state write).
-      // Both commands contain "state.json.tmp". We need the first to succeed and the second to fail.
+      // Each writeState issues: mkdir -p ~/.fleet, cat > state.json.tmp, mv state.json.tmp.
+      // The cat and mv commands both contain "state.json.tmp" (counts 1-2 for first write, 3+ for second).
       let stateWriteCount = 0;
       const exec: ExecFn = async (command: string): Promise<ExecResult> => {
         if (command.includes("cat ~/.fleet/state.json"))
           return UNBOOTSTRAPPED_STATE;
+        if (command.includes("mkdir -p ~/.fleet")) return SUCCESS;
         if (command.includes("state.json.tmp")) {
           stateWriteCount++;
-          if (stateWriteCount <= 1) return SUCCESS;
+          if (stateWriteCount <= 2) return SUCCESS;
           return { code: 1, stdout: "", stderr: "read-only filesystem" };
         }
         if (command.includes("docker network create fleet-proxy"))
@@ -420,6 +433,7 @@ describe("bootstrap", () => {
     it("should execute buildBootstrapCommand with the provided acme_email", async () => {
       const { exec, commands } = createMockExec({
         "cat ~/.fleet/state.json": UNBOOTSTRAPPED_STATE,
+        "mkdir -p ~/.fleet": SUCCESS,
         "state.json.tmp": SUCCESS,
         "docker network create fleet-proxy": SUCCESS,
         "compose.yml.tmp": SUCCESS,
@@ -447,6 +461,7 @@ describe("bootstrap", () => {
     it("should execute buildBootstrapCommand without acme_email when not provided", async () => {
       const { exec, commands } = createMockExec({
         "cat ~/.fleet/state.json": UNBOOTSTRAPPED_STATE,
+        "mkdir -p ~/.fleet": SUCCESS,
         "state.json.tmp": SUCCESS,
         "docker network create fleet-proxy": SUCCESS,
         "compose.yml.tmp": SUCCESS,

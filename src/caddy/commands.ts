@@ -19,6 +19,7 @@ export function buildBootstrapCommand(options?: BootstrapOptions): string {
         servers: {
           fleet: {
             listen: [":443", ":80"],
+            protocols: ["h1", "h2"],
             routes: [],
           },
         },
