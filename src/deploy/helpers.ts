@@ -9,8 +9,9 @@ import { resolveFleetRoot, PROXY_DIR } from "../fleet-root";
 import { writeProxyCompose } from "../proxy";
 import {
   buildBootstrapCommand,
-  buildAddRouteCommand,
-  buildRemoveRouteCommand,
+  buildRoute,
+  buildReplaceRoutesCommand,
+  buildListRoutesCommand,
   buildCaddyId,
 } from "../caddy";
 import { HostCollision, UploadFileOptions } from "./types";
@@ -367,25 +368,42 @@ export async function checkHealth(
 }
 
 /**
- * Performs the delete-then-post pattern for each route using the Caddy command builders.
+ * Registers all routes for a stack in a single atomic PUT to Caddy, preserving
+ * routes from other stacks. This avoids interrupting in-flight TLS challenges
+ * that would otherwise be canceled by multiple sequential config reloads.
  */
 export async function registerRoutes(
   exec: ExecFn,
   stackName: string,
   routes: RouteConfig[]
 ): Promise<RouteState[]> {
+  // Get current routes from Caddy to preserve routes from other stacks
+  const listResult = await exec(buildListRoutesCommand());
+  let currentRoutes: object[] = [];
+  if (listResult.code === 0 && listResult.stdout.trim()) {
+    try {
+      const parsed = JSON.parse(listResult.stdout);
+      currentRoutes = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      currentRoutes = [];
+    }
+  }
+
+  // Filter out this stack's existing routes (they will be replaced)
+  const stackPrefix = `${stackName}__`;
+  const otherRoutes = currentRoutes.filter(
+    (r: any) => typeof r["@id"] !== "string" || !r["@id"].startsWith(stackPrefix)
+  );
+
+  // Build new route objects and route states for this stack
   const routeStates: RouteState[] = [];
+  const newRoutes: object[] = [];
 
   for (const route of routes) {
     const service = route.service || "default";
     const caddyId = buildCaddyId(stackName, service);
 
-    // Delete existing route (ignore errors if it doesn't exist)
-    const removeCmd = buildRemoveRouteCommand(caddyId);
-    await exec(removeCmd);
-
-    // Add the new route
-    const addCmd = buildAddRouteCommand({
+    newRoutes.push(buildRoute({
       stackName,
       serviceName: service,
       domain: route.domain,
@@ -393,14 +411,7 @@ export async function registerRoutes(
       upstreamPort: route.port,
       tls: route.tls,
       acme_email: route.acme_email,
-    });
-
-    const addResult = await exec(addCmd);
-    if (addResult.code !== 0) {
-      throw new Error(
-        `Failed to register route for ${route.domain}: ${addResult.stderr}`
-      );
-    }
+    }));
 
     routeStates.push({
       host: route.domain,
@@ -408,6 +419,12 @@ export async function registerRoutes(
       port: route.port,
       caddy_id: caddyId,
     });
+  }
+
+  // Replace all routes in a single PUT — one reload, no race with TLS challenges
+  const replaceResult = await exec(buildReplaceRoutesCommand([...otherRoutes, ...newRoutes]));
+  if (replaceResult.code !== 0) {
+    throw new Error(`Failed to register routes: ${replaceResult.stderr}`);
   }
 
   return routeStates;

@@ -48,30 +48,29 @@ export function buildBootstrapCommand(options?: BootstrapOptions): string {
   return `docker exec -i ${CADDY_CONTAINER_NAME} sh -c 'curl -s -f -X POST -H "Content-Type: application/json" -d @- ${CADDY_ADMIN_URL}${CADDY_API_LOAD_PATH}' << 'FLEET_JSON'\n${json}\nFLEET_JSON`;
 }
 
-export function buildAddRouteCommand(options: AddRouteOptions): string {
+export function buildRoute(options: AddRouteOptions): object {
   const caddyId = buildCaddyId(options.stackName, options.serviceName);
-
-  const route = {
+  return {
     "@id": caddyId,
-    match: [
-      {
-        host: [options.domain],
-      },
-    ],
+    match: [{ host: [options.domain] }],
     handle: [
       {
         handler: "reverse_proxy",
-        upstreams: [
-          {
-            dial: `${options.upstreamHost}:${options.upstreamPort}`,
-          },
-        ],
+        upstreams: [{ dial: `${options.upstreamHost}:${options.upstreamPort}` }],
       },
     ],
   };
+}
 
+export function buildAddRouteCommand(options: AddRouteOptions): string {
+  const route = buildRoute(options);
   const json = JSON.stringify(route, null, 2);
   return `docker exec -i ${CADDY_CONTAINER_NAME} sh -c 'curl -s -f -X POST -H "Content-Type: application/json" -d @- ${CADDY_ADMIN_URL}${CADDY_API_ROUTES_PATH}' << 'FLEET_JSON'\n${json}\nFLEET_JSON`;
+}
+
+export function buildReplaceRoutesCommand(routes: object[]): string {
+  const json = JSON.stringify(routes, null, 2);
+  return `docker exec -i ${CADDY_CONTAINER_NAME} sh -c 'curl -s -f -X PUT -H "Content-Type: application/json" -d @- ${CADDY_ADMIN_URL}${CADDY_API_ROUTES_PATH}' << 'FLEET_JSON'\n${json}\nFLEET_JSON`;
 }
 
 export function buildRemoveRouteCommand(caddyId: string): string {

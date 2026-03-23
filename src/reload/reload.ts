@@ -3,8 +3,8 @@ import { loadFleetConfig } from "../config";
 import { createConnection, Connection, ExecFn } from "../ssh";
 import { readState, FleetState } from "../state";
 import {
-  buildRemoveRouteCommand,
-  buildAddRouteCommand,
+  buildRoute,
+  buildReplaceRoutesCommand,
   CADDY_CONTAINER_NAME,
 } from "../caddy";
 
@@ -32,49 +32,40 @@ export async function reloadRoutes(
     );
   }
 
-  // Step 2: Collect all routes from state
+  // Step 2: Collect all routes from state and build route objects
   const items: { stackName: string; route: { host: string; service: string; port: number; caddy_id: string } }[] = [];
+  const allRoutes: object[] = [];
 
   for (const [stackName, stackState] of Object.entries(state.stacks)) {
     for (const route of stackState.routes) {
       items.push({ stackName, route });
-    }
-  }
-
-  // Step 3: Process each route (delete-then-post, fault-tolerant)
-  const failed: { host: string; stackName: string; error: string }[] = [];
-  let succeeded = 0;
-
-  for (const { stackName, route } of items) {
-    // Delete existing route (ignore errors)
-    await exec(buildRemoveRouteCommand(route.caddy_id));
-
-    // Re-add the route
-    const addResult = await exec(
-      buildAddRouteCommand({
+      allRoutes.push(buildRoute({
         stackName,
         serviceName: route.service,
         domain: route.host,
         upstreamHost: `${stackName}-${route.service}-1`,
         upstreamPort: route.port,
-      })
-    );
+      }));
+    }
+  }
 
-    if (addResult.code !== 0) {
-      failed.push({
-        host: route.host,
-        stackName,
-        error: addResult.stderr,
-      });
-    } else {
-      succeeded++;
+  // Step 3: Replace all routes in a single PUT — one reload, no TLS race conditions
+  const failed: { host: string; stackName: string; error: string }[] = [];
+
+  if (allRoutes.length > 0) {
+    const replaceResult = await exec(buildReplaceRoutesCommand(allRoutes));
+    if (replaceResult.code !== 0) {
+      for (const { stackName, route } of items) {
+        failed.push({ host: route.host, stackName, error: replaceResult.stderr });
+      }
+      return { total: items.length, succeeded: 0, failed };
     }
   }
 
   // Step 4: Return summary
   return {
     total: items.length,
-    succeeded,
+    succeeded: items.length,
     failed,
   };
 }

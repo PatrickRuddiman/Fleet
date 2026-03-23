@@ -11,7 +11,9 @@ export {
 export {
   buildCaddyId,
   buildBootstrapCommand,
+  buildRoute,
   buildAddRouteCommand,
+  buildReplaceRoutesCommand,
   buildRemoveRouteCommand,
   buildListRoutesCommand,
   buildGetConfigCommand,

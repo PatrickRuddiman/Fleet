@@ -156,7 +156,7 @@ describe("reloadRoutes", () => {
     expect(result.failed).toHaveLength(0);
   });
 
-  it("should reload a single route with delete then add", async () => {
+  it("should reload a single route with a single PUT", async () => {
     const mockExec: ExecFn = vi.fn().mockImplementation((cmd: string) => {
       if (cmd.includes("docker inspect")) {
         return Promise.resolve({ stdout: "true", stderr: "", code: 0 });
@@ -166,30 +166,22 @@ describe("reloadRoutes", () => {
 
     const result = await reloadRoutes(mockExec, singleStackState());
 
-    // Verify DELETE command for the route
-    expect(mockExec).toHaveBeenCalledWith(
-      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
-    );
+    // Verify no DELETE commands — replaced by single PUT
+    expect(mockExec).not.toHaveBeenCalledWith(expect.stringContaining("DELETE"));
 
-    // Verify ADD command contains correct upstream host
-    expect(mockExec).toHaveBeenCalledWith(
-      expect.stringContaining("docker exec -i fleet-proxy")
-    );
-    expect(mockExec).toHaveBeenCalledWith(
-      expect.stringContaining("myapp-web-1:3000")
-    );
-    expect(mockExec).toHaveBeenCalledWith(
-      expect.stringContaining("myapp.example.com")
-    );
+    // Verify single PUT command with correct upstream host and domain
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("-X PUT"));
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("myapp-web-1:3000"));
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("myapp.example.com"));
 
-    // Verify result counts: 1 inspect + 1 delete + 1 add = 3 calls
-    expect(mockExec).toHaveBeenCalledTimes(3);
+    // 1 inspect + 1 PUT = 2 calls total
+    expect(mockExec).toHaveBeenCalledTimes(2);
     expect(result.total).toBe(1);
     expect(result.succeeded).toBe(1);
     expect(result.failed).toHaveLength(0);
   });
 
-  it("should reload multiple routes across multiple stacks", async () => {
+  it("should reload multiple routes across multiple stacks in a single PUT", async () => {
     const mockExec: ExecFn = vi.fn().mockImplementation((cmd: string) => {
       if (cmd.includes("docker inspect")) {
         return Promise.resolve({ stdout: "true", stderr: "", code: 0 });
@@ -199,82 +191,28 @@ describe("reloadRoutes", () => {
 
     const result = await reloadRoutes(mockExec, multiStackState());
 
-    // 1 inspect + 3 routes × 2 commands each (delete + add) = 7 calls
-    expect(mockExec).toHaveBeenCalledTimes(7);
+    // 1 inspect + 1 PUT (all routes) = 2 calls total
+    expect(mockExec).toHaveBeenCalledTimes(2);
+    expect(mockExec).not.toHaveBeenCalledWith(expect.stringContaining("DELETE"));
 
-    // Verify DELETE commands for all three caddy_ids
-    expect(mockExec).toHaveBeenCalledWith(
-      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
-    );
-    expect(mockExec).toHaveBeenCalledWith(
-      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__api"
-    );
-    expect(mockExec).toHaveBeenCalledWith(
-      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/backend__server"
-    );
+    // Single PUT contains all upstream hosts
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("myapp-web-1:3000"));
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("myapp-api-1:4000"));
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("backend-server-1:8080"));
 
-    // Verify ADD commands contain correct upstream hosts
-    expect(mockExec).toHaveBeenCalledWith(
-      expect.stringContaining("myapp-web-1:3000")
-    );
-    expect(mockExec).toHaveBeenCalledWith(
-      expect.stringContaining("myapp-api-1:4000")
-    );
-    expect(mockExec).toHaveBeenCalledWith(
-      expect.stringContaining("backend-server-1:8080")
-    );
-
-    // Verify result counts
     expect(result.total).toBe(3);
     expect(result.succeeded).toBe(3);
     expect(result.failed).toHaveLength(0);
   });
 
-  it("should collect partial failures and continue", async () => {
+  it("should report all routes as failed when the PUT fails", async () => {
     const mockExec: ExecFn = vi.fn().mockImplementation((cmd: string) => {
       if (cmd.includes("docker inspect")) {
         return Promise.resolve({ stdout: "true", stderr: "", code: 0 });
       }
-      // Fail the POST/add command for api.example.com
-      if (cmd.includes("POST") && cmd.includes("api.example.com")) {
-        return Promise.resolve({
-          stdout: "",
-          stderr: "connection refused",
-          code: 1,
-        });
-      }
-      return Promise.resolve({ stdout: "", stderr: "", code: 0 });
-    });
-
-    const result = await reloadRoutes(mockExec, multiStackState());
-
-    expect(result.total).toBe(3);
-    expect(result.succeeded).toBe(2);
-    expect(result.failed).toHaveLength(1);
-
-    // Verify failure details include the failed route
-    expect(result.failed).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          host: "api.example.com",
-          stackName: "myapp",
-        }),
-      ])
-    );
-  });
-
-  it("should report all failures when all routes fail to register", async () => {
-    const mockExec: ExecFn = vi.fn().mockImplementation((cmd: string) => {
-      if (cmd.includes("docker inspect")) {
-        return Promise.resolve({ stdout: "true", stderr: "", code: 0 });
-      }
-      // All POST/add commands fail
-      if (cmd.includes("POST")) {
-        return Promise.resolve({
-          stdout: "",
-          stderr: "registration failed",
-          code: 1,
-        });
+      // PUT fails
+      if (cmd.includes("-X PUT")) {
+        return Promise.resolve({ stdout: "", stderr: "connection refused", code: 1 });
       }
       return Promise.resolve({ stdout: "", stderr: "", code: 0 });
     });
@@ -284,31 +222,6 @@ describe("reloadRoutes", () => {
     expect(result.total).toBe(3);
     expect(result.succeeded).toBe(0);
     expect(result.failed).toHaveLength(3);
-  });
-
-  it("should silently ignore delete failures", async () => {
-    const mockExec: ExecFn = vi.fn().mockImplementation((cmd: string) => {
-      if (cmd.includes("docker inspect")) {
-        return Promise.resolve({ stdout: "true", stderr: "", code: 0 });
-      }
-      // DELETE commands fail
-      if (cmd.includes("DELETE")) {
-        return Promise.resolve({
-          stdout: "",
-          stderr: "route not found",
-          code: 1,
-        });
-      }
-      // POST commands succeed
-      return Promise.resolve({ stdout: "", stderr: "", code: 0 });
-    });
-
-    const result = await reloadRoutes(mockExec, singleStackState());
-
-    // Route should still succeed despite delete failure
-    expect(result.total).toBe(1);
-    expect(result.succeeded).toBe(1);
-    expect(result.failed).toHaveLength(0);
   });
 
   it("should throw when Caddy container is not running", async () => {
@@ -355,22 +268,17 @@ describe("reloadProxy", () => {
     expect(mockProcessExitCodeRef.value).toBeUndefined();
     // Verify docker inspect check was issued
     expect(mockExecCommandsRef.value).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("docker inspect"),
-      ])
+      expect.arrayContaining([expect.stringContaining("docker inspect")])
     );
-    // Verify DELETE command for the route
+    // Verify PUT command with the route
     expect(mockExecCommandsRef.value).toEqual(
-      expect.arrayContaining([
-        "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web",
-      ])
+      expect.arrayContaining([expect.stringContaining("-X PUT")])
     );
-    // Verify ADD command for the route
     expect(mockExecCommandsRef.value).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("myapp.example.com"),
-      ])
+      expect.arrayContaining([expect.stringContaining("myapp.example.com")])
     );
+    // No DELETE commands
+    expect(mockExecCommandsRef.value.some((cmd) => cmd.includes("DELETE"))).toBe(false);
   });
 
   it("should successfully reload routes for multiple stacks", async () => {
@@ -381,16 +289,8 @@ describe("reloadProxy", () => {
 
     expect(mockProcessExitCodeRef.value).toBeUndefined();
 
-    // Verify DELETE commands for all 3 routes
-    expect(mockExecCommandsRef.value).toEqual(
-      expect.arrayContaining([
-        "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web",
-        "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__api",
-        "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/backend__server",
-      ])
-    );
-
-    // Verify ADD commands contain correct upstream hosts
+    // Single PUT contains all upstream hosts (no DELETE commands)
+    expect(mockExecCommandsRef.value.some((cmd) => cmd.includes("DELETE"))).toBe(false);
     expect(mockExecCommandsRef.value).toEqual(
       expect.arrayContaining([
         expect.stringContaining("myapp-web-1:3000"),
@@ -450,21 +350,15 @@ describe("reloadProxy", () => {
 
     await reloadProxy();
 
-    // Verify exact DELETE command format
-    const deleteCmd = mockExecCommandsRef.value.find((cmd) =>
-      cmd.includes("DELETE")
-    );
-    expect(deleteCmd).toBe(
-      "docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__web"
-    );
+    // No DELETE or POST commands — replaced by single PUT
+    expect(mockExecCommandsRef.value.some((cmd) => cmd.includes("DELETE"))).toBe(false);
+    expect(mockExecCommandsRef.value.some((cmd) => cmd.includes("-X POST"))).toBe(false);
 
-    // Verify ADD command format
-    const addCmd = mockExecCommandsRef.value.find((cmd) =>
-      cmd.includes("POST")
-    );
-    expect(addCmd).toBeDefined();
-    expect(addCmd).toContain("docker exec -i fleet-proxy");
-    expect(addCmd).toContain("myapp.example.com");
-    expect(addCmd).toContain("myapp-web-1:3000");
+    // Verify PUT command format
+    const putCmd = mockExecCommandsRef.value.find((cmd) => cmd.includes("-X PUT"));
+    expect(putCmd).toBeDefined();
+    expect(putCmd).toContain("docker exec -i fleet-proxy");
+    expect(putCmd).toContain("myapp.example.com");
+    expect(putCmd).toContain("myapp-web-1:3000");
   });
 });

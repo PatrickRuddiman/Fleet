@@ -673,7 +673,8 @@ describe("registerRoutes", () => {
     const commands: string[] = [];
     const exec: ExecFn = async (cmd) => {
       commands.push(cmd);
-      return { stdout: "", stderr: "", code: 0 };
+      // GET returns empty array (no existing routes)
+      return { stdout: cmd.includes("-X") ? "" : "[]", stderr: "", code: 0 };
     };
 
     const routes = [
@@ -682,9 +683,13 @@ describe("registerRoutes", () => {
 
     const result = await registerRoutes(exec, "myapp", routes);
 
-    expect(commands.length).toBeGreaterThanOrEqual(2);
-    expect(commands[0]).toContain("DELETE");
-    expect(commands[1]).toContain("POST");
+    expect(commands).toHaveLength(2);
+    // First command: GET current routes (no -X flag)
+    expect(commands[0]).not.toContain("-X");
+    expect(commands[0]).toContain("routes");
+    // Second command: PUT with new routes
+    expect(commands[1]).toContain("-X PUT");
+    expect(commands[1]).toContain("myapp.example.com");
     expect(result).toHaveLength(1);
     expect(result[0].host).toBe("myapp.example.com");
     expect(result[0].service).toBe("default");
@@ -692,10 +697,16 @@ describe("registerRoutes", () => {
     expect(result[0].caddy_id).toBe("myapp__default");
   });
 
-  it("should delete existing route before posting new one", async () => {
+  it("should replace this stack's routes while preserving routes from other stacks", async () => {
+    const existingOtherRoute = { "@id": "other__web", match: [{ host: ["other.example.com"] }], handle: [] };
+    const existingThisRoute = { "@id": "mystack__api", match: [{ host: ["old.example.com"] }], handle: [] };
+
     const commands: string[] = [];
     const exec: ExecFn = async (cmd) => {
       commands.push(cmd);
+      if (!cmd.includes("-X")) {
+        return { stdout: JSON.stringify([existingOtherRoute, existingThisRoute]), stderr: "", code: 0 };
+      }
       return { stdout: "", stderr: "", code: 0 };
     };
 
@@ -705,10 +716,14 @@ describe("registerRoutes", () => {
 
     const result = await registerRoutes(exec, "mystack", routes);
 
-    expect(commands[0]).toContain("DELETE");
-    expect(commands[0]).toContain("mystack__api");
-    expect(commands[1]).toContain("POST");
+    expect(commands[1]).toContain("-X PUT");
+    // New route for this stack
     expect(commands[1]).toContain("api.example.com");
+    expect(commands[1]).toContain("mystack__api");
+    // Other stack's route preserved
+    expect(commands[1]).toContain("other__web");
+    // Old route for this stack removed
+    expect(commands[1]).not.toContain("old.example.com");
     expect(result[0].caddy_id).toBe("mystack__api");
   });
 });
