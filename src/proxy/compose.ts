@@ -39,7 +39,11 @@ export async function writeProxyCompose(
   const filePath = `${dir}/${COMPOSE_FILENAME}`;
   const tmpPath = `${filePath}.tmp`;
 
-  const command = `mkdir -p ${dir} && cat << 'FLEET_EOF' > ${tmpPath}\n${content}FLEET_EOF\n&& mv ${tmpPath} ${filePath}`;
+  const command = `set -e
+mkdir -p ${dir}
+cat << 'FLEET_EOF' > ${tmpPath}
+${content}FLEET_EOF
+mv ${tmpPath} ${filePath}`;
 
   const result = await exec(command);
 

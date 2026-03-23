@@ -11,6 +11,7 @@ import { register as registerStop } from "./commands/stop";
 import { register as registerTeardown } from "./commands/teardown";
 import { register as registerEnv } from "./commands/env";
 import { register as registerProxy } from "./commands/proxy";
+import { register as registerVersion } from "./commands/version";
 
 export function createProgram(): Command {
   const program = new Command();
@@ -32,6 +33,7 @@ export function createProgram(): Command {
   registerTeardown(program);
   registerEnv(program);
   registerProxy(program);
+  registerVersion(program);
 
   return program;
 }

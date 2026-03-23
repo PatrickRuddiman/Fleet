@@ -145,19 +145,30 @@ export async function uploadFile(
   const tmpPath = `${remotePath}.tmp`;
   const dir = remotePath.substring(0, remotePath.lastIndexOf("/"));
 
-  let command = `mkdir -p ${dir} && cat << 'FLEET_EOF' > ${tmpPath}\n${content}\nFLEET_EOF\n&& mv ${tmpPath} ${remotePath}`;
-
-  if (permissions) {
-    command += ` && chmod ${permissions} ${remotePath}`;
+  const mkdirResult = await exec(`mkdir -p ${dir}`);
+  if (mkdirResult.code !== 0) {
+    const detail = mkdirResult.stderr ? ` — ${mkdirResult.stderr}` : "";
+    throw new Error(`Failed to create directory ${dir}: command exited with code ${mkdirResult.code}${detail}`);
   }
 
-  const result = await exec(command);
+  const writeResult = await exec(`cat << 'FLEET_EOF' > ${tmpPath}\n${content}\nFLEET_EOF`);
+  if (writeResult.code !== 0) {
+    const detail = writeResult.stderr ? ` — ${writeResult.stderr}` : "";
+    throw new Error(`Failed to write temp file ${tmpPath}: command exited with code ${writeResult.code}${detail}`);
+  }
 
-  if (result.code !== 0) {
-    const detail = result.stderr ? ` — ${result.stderr}` : "";
-    throw new Error(
-      `Failed to upload file to ${remotePath}: command exited with code ${result.code}${detail}`
-    );
+  const mvResult = await exec(`mv ${tmpPath} ${remotePath}`);
+  if (mvResult.code !== 0) {
+    const detail = mvResult.stderr ? ` — ${mvResult.stderr}` : "";
+    throw new Error(`Failed to upload file to ${remotePath}: command exited with code ${mvResult.code}${detail}`);
+  }
+
+  if (permissions) {
+    const chmodResult = await exec(`chmod ${permissions} ${remotePath}`);
+    if (chmodResult.code !== 0) {
+      const detail = chmodResult.stderr ? ` — ${chmodResult.stderr}` : "";
+      throw new Error(`Failed to set permissions on ${remotePath}: command exited with code ${chmodResult.code}${detail}`);
+    }
   }
 }
 

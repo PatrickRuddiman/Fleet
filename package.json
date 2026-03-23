@@ -1,6 +1,6 @@
 {
   "name": "@pruddiman/fleet",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "description": "A TypeScript CLI tool for managing deployments",
   "files": [
     "dist/",
@@ -28,6 +28,7 @@
     "fleet": "bin/fleet"
   },
   "scripts": {
+    "prepublishOnly": "npm run build",
     "build": "tsc",
     "dev": "ts-node src/cli.ts",
     "test": "vitest run",
