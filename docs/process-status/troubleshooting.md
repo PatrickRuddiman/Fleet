@@ -82,7 +82,9 @@ only indicator that something is wrong.
 **Resolution**: Run `fleet deploy` to recreate the containers, or
 `fleet teardown <stack>` to clean up state. See
 [Stack Lifecycle Operations](../stack-lifecycle/overview.md) for the full
-stop/teardown/restart reference.
+stop/teardown/restart reference, and
+[Failure Modes](../stack-lifecycle/failure-modes.md) for troubleshooting
+partial teardown failures.
 
 ### Unexpected JSON output from Docker Compose
 
@@ -219,3 +221,11 @@ case is an orphaned SSH session on the server that will eventually time out.
   teardown operations
 - [Bootstrap troubleshooting](../bootstrap/bootstrap-troubleshooting.md) --
   diagnosing proxy bootstrap failures
+- [Validation troubleshooting](../validation/troubleshooting.md) --
+  resolving configuration validation errors
+- [Deploy troubleshooting](../deploy/troubleshooting.md) --
+  diagnosing deployment pipeline failures
+- [CLI entry point troubleshooting](../cli-entry-point/troubleshooting.md) --
+  CLI binary and runtime issues
+- [Deploy failure recovery](../deploy/failure-recovery.md) --
+  recovery from partial deployment failures

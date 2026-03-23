@@ -1,9 +1,11 @@
 # Compose Configuration Checks
 
 Compose checks validate the parsed Docker Compose file against Fleet's
-operational requirements. They catch port conflicts with the reverse proxy,
-missing service references, missing image directives, and unsafe restart
-policies. These checks run after fleet-level checks in the validation pipeline.
+operational requirements. They catch port conflicts with the
+[reverse proxy](../caddy-proxy/overview.md), missing service references,
+missing image directives, and unsafe restart policies. These checks run after
+fleet-level checks in the
+[validation pipeline](./overview.md).
 
 Source: `src/validation/compose-checks.ts`
 
@@ -197,7 +199,7 @@ separate from data extraction (how to find things in the compose structure):
 | `checkNoImageOrBuild` | `findServicesWithoutImageOrBuild()` |
 | `checkOneShotNoMaxAttempts` | Direct iteration over `compose.services` |
 
-## Related pages
+## Related documentation
 
 - [Validation Overview](./overview.md)
 - [Validation Codes Reference](./validation-codes.md) --- Full catalog with
@@ -213,3 +215,7 @@ separate from data extraction (how to find things in the compose structure):
   How restart policies affect deployment decisions.
 - [Configuration Loading](../configuration/loading-and-validation.md) --- How
   the fleet config is loaded before validation runs.
+- [Troubleshooting](./troubleshooting.md) --- Common validation failures and
+  how to resolve them.
+- [Compose Parser Internals](../compose/parser.md) --- Port normalization and
+  service extraction details.

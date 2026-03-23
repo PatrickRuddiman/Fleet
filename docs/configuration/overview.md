@@ -16,14 +16,14 @@ The configuration module has three responsibilities:
    defaults, and constraints.
 2. **Loading and validation** -- a loader in `src/config/loader.ts` that reads
    YAML from disk, validates it against the schema, and expands `$VAR`
-   references in Infisical secret fields.
+   references in [Infisical secret fields](../env-secrets/infisical-integration.md).
 3. **Public API** -- a barrel re-export in `src/config/index.ts` that exposes
    all types and the `loadFleetConfig()` function to the rest of the codebase.
 
 ## Why it exists
 
-Fleet is a CLI tool that deploys Docker Compose stacks to remote servers via
-SSH. Every operational command -- `deploy`, `stop`, `restart`, `logs`, `ps`,
+Fleet is a CLI tool that deploys [Docker Compose stacks](../compose/overview.md) to remote servers via
+[SSH](../ssh-connection/overview.md). Every operational command -- `deploy`, `stop`, `restart`, `logs`, `ps`,
 `teardown`, `env`, `proxy status`, `proxy reload`, and `validate` -- begins by
 loading `fleet.yml` and extracting the fields it needs. Without a strict,
 validated configuration contract, each subsystem would need to perform its own
@@ -134,7 +134,7 @@ routes:
 For the three mutually exclusive `env` modes, see
 [Environment Variables and Secrets](./environment-variables.md).
 
-## Further reading
+## Related documentation
 
 - [Schema Reference](./schema-reference.md) -- field-by-field specification
   with types, defaults, and constraints
@@ -147,7 +147,7 @@ For the three mutually exclusive `env` modes, see
 - [Validation Overview](../validation/overview.md) -- how configuration
   validation fits into the broader validation pipeline
 - [Fleet Configuration Checks](../validation/fleet-checks.md) -- semantic
-  checks on the FleetConfig object
+  checks that validate the `FleetConfig` object produced by this module
 - [Validation Codes](../validation/validation-codes.md) -- all error and
   warning codes with resolutions
 - [Deploy Sequence](../deploy/deploy-sequence.md) -- how the loaded config

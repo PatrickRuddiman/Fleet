@@ -11,7 +11,7 @@ The top-level object stored in the state file.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `fleet_root` | `string` | Yes | Absolute path to the Fleet root directory on the server (e.g., `/opt/fleet` or `~/fleet`). Empty string on a fresh default state. Resolved during [bootstrap](../bootstrap/server-bootstrap.md) and stored here for all subsequent operations. |
+| `fleet_root` | `string` | Yes | Absolute path to the Fleet root directory on the server. Resolved during [bootstrap](../bootstrap/server-bootstrap.md) by `resolveFleetRoot()` in `src/fleet-root/resolve.ts:11-43`. The resolution logic tries `/opt/fleet` first; if that fails with a permission error (e.g., non-root user), it falls back to `~/fleet` under the SSH user's home directory. The resolved path is also written to `~/.fleet-root` for future reference. Empty string on a fresh default state before bootstrap runs. |
 | `caddy_bootstrapped` | `boolean` | Yes | Whether the Caddy reverse proxy has been initialized. When `true`, the bootstrap step is skipped during deployment. Set to `true` at the end of a successful bootstrap sequence. |
 | `stacks` | `Record<string, StackState>` | Yes | Map of stack names to their deployment state. Keys are the stack names from `fleet.yml` (must match `^[a-z\d][a-z\d-]*$`). An empty object `{}` on a fresh server. |
 
@@ -75,6 +75,28 @@ fields added in later versions as `.optional()` so that older state files pass
 validation. The TypeScript interface declares all fields as required for
 type-safety at call sites, relying on optional chaining and runtime checks
 where the data may actually be absent.
+
+**Unknown field behavior**: Zod's default `z.object()` strips unrecognized
+keys during parsing. This means `readState` will silently discard any fields
+in the state file that are not declared in the schema. If a newer Fleet
+version adds fields and an older version later reads and rewrites the state,
+those newer fields will be lost. See the
+[schema evolution section](./overview.md#schema-evolution-and-backward-compatibility)
+in the overview for mitigation strategies.
+
+### Upgrade path for users
+
+When upgrading Fleet to a version that introduces new `ServiceState` fields:
+
+1. **No migration required**: Existing state files pass Zod validation because
+   new fields are `.optional()`.
+2. **Gradual population**: New fields are written on the next `fleet deploy`
+   for each stack. Until then, code consuming those fields receives `undefined`
+   and falls back gracefully (e.g., skipping image digest comparison if
+   `image_digest` is absent).
+3. **Downgrade risk**: Running an older Fleet version after a newer one has
+   written state will cause the older version to strip unknown fields on the
+   next `writeState` call. Re-upgrading and redeploying will restore them.
 
 | Field | Zod | TypeScript | Type | Description |
 |---|---|---|---|---|
@@ -162,5 +184,11 @@ stacks on a single server, which is outside Fleet's intended use case.
   maps to Caddy route management
 - [Service Classification](../deploy/service-classification-and-hashing.md) --
   how `definition_hash`, `image_digest`, and `env_hash` drive selective deployment
+- [Stack Lifecycle: Stop](../stack-lifecycle/stop.md) -- how the stop operation
+  removes stack entries from state
+- [Stack Lifecycle: Teardown](../stack-lifecycle/teardown.md) -- how teardown
+  removes stack entries and optionally cleans up volumes
+- [Environment State Data Model](../env-secrets/state-data-model.md) -- how
+  `env_hash` tracks environment file changes
 - [Directory Layout](../fleet-root/directory-layout.md) -- how the Fleet root
   directory structure relates to state file paths

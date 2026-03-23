@@ -1,7 +1,7 @@
 # Configuration and Compose Validation
 
 Fleet's validation layer is a pre-flight check system that catches misconfigurations
-in both the Fleet configuration file (`fleet.yml`) and the referenced Docker Compose
+in both the [Fleet configuration file](../configuration/overview.md) (`fleet.yml`) and the referenced Docker Compose
 file before a deployment can proceed. It runs 10 distinct checks across two data
 sources, producing structured findings with error codes, human-readable messages,
 and actionable resolutions.
@@ -55,7 +55,7 @@ The validation system is split into four source files:
 |------|---------|
 | `src/validation/types.ts` | Defines the `Finding` interface, `Severity` type, and all error `Codes` |
 | `src/validation/fleet-checks.ts` | Checks that operate on the `FleetConfig` object (domains, ports, stack name, env conflicts) |
-| `src/validation/compose-checks.ts` | Checks that operate on the `ParsedComposeFile` (reserved ports, missing services, image/build, restart policies) |
+| `src/validation/compose-checks.ts` | Checks that operate on the [`ParsedComposeFile`](../compose/types.md) (reserved ports, missing services, image/build, restart policies) |
 | `src/validation/index.ts` | Barrel exports and the `runAllChecks()` orchestrator |
 | `src/commands/validate.ts` | CLI command registration and output formatting |
 
@@ -106,7 +106,7 @@ check registry, or hook system for adding custom checks without modifying
 - **[Caddy Reverse Proxy](../caddy-proxy/)** --- Architectural dependency: the port
   80/443 reservation checks exist because the Caddy proxy claims these ports.
 
-## Related pages
+## Related documentation
 
 - [Validation Codes Reference](./validation-codes.md) --- Complete catalog of all
   error and warning codes with triggers and resolutions.
@@ -122,6 +122,8 @@ check registry, or hook system for adding custom checks without modifying
   checks run.
 - [Project Initialization Overview](../project-init/overview.md) --- How
   `fleet init` generates `fleet.yml` that is subsequently validated.
+- [State Management Overview](../state-management/overview.md) --- Validation
+  findings affect deployment state; state tracks which validations have passed.
 - [Deploy Sequence](../deploy/deploy-sequence.md) --- The 17-step pipeline
   where validation runs as Step 1.
 - [Project Init Integrations](../project-init/integrations.md) --- How project

@@ -66,7 +66,9 @@ Published directly on the host. Port 80 is required for:
 Port 443 serves all HTTPS traffic.
 
 No other ports are published. The Caddy Admin API (port 2019) is only
-accessible inside the container via `docker exec`.
+accessible inside the container via `docker exec`. See
+[Proxy Status](../proxy-status-reload/proxy-status.md) for how Fleet queries
+Caddy routes through this interface.
 
 #### Command: `caddy run --resume`
 
@@ -74,12 +76,21 @@ This is the key to configuration durability:
 
 - `caddy run` starts Caddy in the foreground (required for Docker).
 - `--resume` tells Caddy to load its last autosaved configuration from the
-  config directory (`/config` inside the container). If no saved config exists,
-  Caddy starts with an empty configuration.
+  config directory (`/config` inside the container). Per the
+  [official Caddy CLI docs](https://caddyserver.com/docs/command-line#caddy-run),
+  this flag "uses the last loaded configuration that was autosaved, overriding
+  the `--config` flag (if present). Using this flag guarantees config durability
+  through machine reboots or process restarts. It is most useful in API-centric
+  deployments."
+- If no saved config exists (first start), Caddy starts with a blank
+  configuration and enables the admin API on `localhost:2019`, allowing Fleet to
+  POST the bootstrap config.
 
 This means all routes configured via the Admin API survive container restarts
-without Fleet needing to replay them. See the
-[official CLI docs](https://caddyserver.com/docs/command-line#caddy-run).
+without Fleet needing to replay them. The `--resume` flag is essential for
+Fleet's API-driven workflow -- without it, Caddy would start with an empty
+config after every restart, causing all routes to disappear until
+`fleet proxy reload` is run.
 
 ## Volumes
 
@@ -142,7 +153,7 @@ call on redeployment.
 
 ## Atomic Write Pattern
 
-`writeProxyCompose()` (`src/proxy/compose.ts:33-52`) writes the compose file to
+`writeProxyCompose()` (`src/proxy/compose.ts:33-56`) writes the compose file to
 the remote server using a tmp-then-rename strategy:
 
 ```
@@ -163,7 +174,40 @@ This pattern ensures:
    prevent shell expansion of any `$` characters in the YAML content.
 
 The destination path is `{fleetRoot}/{PROXY_DIR}/compose.yml`, where
-`PROXY_DIR` is imported from `src/fleet-root`.
+`PROXY_DIR` is imported from `src/fleet-root`. See
+[Directory Layout](../fleet-root/directory-layout.md) for the full on-server
+directory structure.
+
+## Remote Execution via `ExecFn`
+
+`writeProxyCompose()` accepts an `ExecFn` parameter (`src/proxy/compose.ts:35`)
+rather than executing commands directly. The `ExecFn` type
+(`src/ssh/types.ts:7`) is a simple function signature (see
+[Connection API Reference](../ssh-connection/connection-api.md) for full
+interface documentation):
+
+```typescript
+type ExecFn = (command: string) => Promise<ExecResult>;
+```
+
+The `createConnection()` factory (`src/ssh/factory.ts:6-11`) provides two
+implementations:
+
+| Server host | Implementation | How it works |
+|---|---|---|
+| Remote (any hostname) | `createSshConnection()` (`src/ssh/ssh.ts`) | Executes commands over SSH using the `node-ssh` library |
+| `localhost` / `127.0.0.1` | `createLocalConnection()` (`src/ssh/local.ts`) | Executes commands as local child processes, bypassing SSH |
+
+The local execution path enables development and testing without requiring an
+SSH server. All proxy and Caddy operations work identically in both modes
+because they only depend on the `ExecFn` interface.
+
+Consumer modules that hold an `ExecFn` and use the proxy compose functionality:
+
+- [Bootstrap sequence](../bootstrap/bootstrap-sequence.md) --
+  `src/bootstrap/bootstrap.ts`
+- [Deploy helpers](../deploy/caddy-route-management.md) --
+  `src/deploy/helpers.ts`
 
 ## Compose File Lifecycle
 
@@ -204,3 +248,7 @@ updates.
   pipeline; Step 5 triggers proxy bootstrap
 - [State Management Overview](../state-management/overview.md) -- How
   `caddy_bootstrapped` flag is tracked in state
+- [Deployment Troubleshooting](../deploy/troubleshooting.md) -- diagnosing
+  proxy bootstrap failures during deployment
+- [Stack Lifecycle Teardown](../stack-lifecycle/teardown.md) -- how the
+  fleet-proxy network is preserved during teardown

@@ -87,7 +87,7 @@ or `Invalid state file structure: ~/.fleet/state.json`.
           "host": "app.example.com",
           "service": "web",
           "port": 3000,
-          "caddy_id": "myapp__web"
+          "caddy_id": "myapp__app-example-com"
         }
       ],
       "env_hash": "abc123...",
@@ -155,9 +155,11 @@ them up:
 2. If the route should be removed, delete it manually:
 
     ```sh
+    # Caddy ID format is stackname__domain-slug
+    # e.g., for old.example.com owned by stack "myapp": myapp__old-example-com
     ssh root@your-server \
       docker exec fleet-proxy curl -s -f -X DELETE \
-      http://localhost:2019/id/stackname__servicename
+      http://localhost:2019/id/myapp__old-example-com
     ```
 
 ### Missing routes detected
@@ -177,29 +179,28 @@ proxied**.
 
 **Solution**: Run `fleet proxy reload` to re-register all routes.
 
-### Reload reports partial failures
+### Reload fails
 
-**Symptom**: `fleet proxy reload` output:
+**Symptom**: `fleet proxy reload` exits with an error.
 
-```
-Reload complete: 4/6 routes registered successfully.
+**Cause**: The reload process builds all routes from `state.json`, fetches the
+current Caddy config via `GET /config/`, merges routes into the config tree,
+and posts the full configuration atomically via `POST /load`. Because the
+entire config is posted in a single request, the reload either succeeds
+completely or fails completely -- Caddy rolls back to the previous config on
+failure.
 
-Failed routes:
-  - staging.example.com (stack: myapp): <error details>
-  - dev.example.com (stack: devstack): <error details>
-```
-
-**Cause**: The Caddy Admin API rejected the route addition. Common reasons:
+Common failure reasons:
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| Connection refused in curl | Caddy process crashed mid-reload | Restart Caddy: `docker restart fleet-proxy`, then reload again |
-| Invalid JSON | Malformed route data in state | Inspect and fix `state.json` |
-| Upstream unreachable | Container for the service is not running | Deploy the stack first |
+| Connection refused / container not running | Caddy process is not running | Restart Caddy: `docker restart fleet-proxy`, then reload again |
+| `GET /config/` fails | Caddy Admin API is unresponsive | Check Caddy logs: `docker logs fleet-proxy` |
+| `POST /load` rejected | Invalid config JSON (e.g., malformed route data in state) | Inspect and fix `state.json`, then reload again |
+| SSH connection failed | Cannot reach the remote server | Check SSH connectivity (see [SSH connection failures](#ssh-connection-failures) above) |
 
-After fixing the underlying cause, run `fleet proxy reload` again. Since the
-loop is idempotent (delete + re-add), previously succeeded routes will simply
-be refreshed.
+After fixing the underlying cause, run `fleet proxy reload` again. The reload
+is idempotent -- it rebuilds the full route set from state each time.
 
 ## Directly querying the Caddy Admin API
 
@@ -215,15 +216,15 @@ ssh root@your-server \
   docker exec fleet-proxy curl -s \
   http://localhost:2019/config/apps/http/servers/fleet/routes | jq
 
-# View a specific route by ID
+# View a specific route by ID (format: stackname__domain-slug)
 ssh root@your-server \
   docker exec fleet-proxy curl -s \
-  http://localhost:2019/id/myapp__web | jq
+  http://localhost:2019/id/myapp__app-example-com | jq
 
 # Delete a specific route
 ssh root@your-server \
   docker exec fleet-proxy curl -s -f -X DELETE \
-  http://localhost:2019/id/myapp__web
+  http://localhost:2019/id/myapp__app-example-com
 
 # View Caddy access/error logs
 ssh root@your-server docker logs fleet-proxy
@@ -234,11 +235,10 @@ ssh root@your-server docker logs fleet-proxy --tail 100 --follow
 
 | Endpoint | Method | Purpose | Used by |
 |----------|--------|---------|---------|
-| `/config/` | GET | Retrieve full configuration (including version) | `fleet proxy status` |
+| `/config/` | GET | Retrieve full configuration (including version) | `fleet proxy status`, `fleet proxy reload`, deploy |
 | `/config/apps/http/servers/fleet/routes` | GET | List all routes in the Fleet server | `fleet proxy status` |
-| `/config/apps/http/servers/fleet/routes` | POST | Append a new route | `fleet proxy reload`, deploy |
-| `/id/{caddy_id}` | DELETE | Remove a specific route by its `@id` | `fleet proxy reload`, teardown |
-| `/load` | POST | Replace the entire Caddy configuration | Bootstrap only |
+| `/id/{caddy_id}` | DELETE | Remove a specific route by its `@id` | Teardown |
+| `/load` | POST | Replace the entire Caddy configuration atomically | Bootstrap, `fleet proxy reload`, deploy (`registerRoutes`) |
 
 The Admin API **default address is `localhost:2019`** inside the container. It
 is a REST API that uses JSON for both requests and responses. Configuration
@@ -295,3 +295,7 @@ the generated compose file.
     layer details
 - [Configuration Overview](../configuration/overview.md) -- `fleet.yml`
     `server` section used for SSH connections
+- [Configuration Loading and Validation](../configuration/loading-and-validation.md)
+    -- how `fleet.yml` is loaded and validated before proxy commands run
+- [Fleet Root Directory Layout](../fleet-root/directory-layout.md) -- where
+    proxy files live on the server

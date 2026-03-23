@@ -170,3 +170,7 @@ for all route field defaults.
   parsed, including the port normalization that produces `target` values
 - [Validation Overview](../validation/overview.md) -- the checks that validate
   the generated `fleet.yml`
+- [Configuration Overview](../configuration/overview.md) -- how the generated
+  `fleet.yml` is subsequently loaded and parsed by Fleet commands
+- [CI/CD Integration](../ci-cd-integration.md) -- how to use the generated
+  `fleet.yml` in CI/CD pipelines

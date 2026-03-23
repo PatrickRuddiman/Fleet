@@ -5,20 +5,21 @@
 This page documents failure modes, error messages, and recovery procedures for
 the [`fleet env` command](../cli-entry-point/env-command.md) and the secrets-resolution step that runs during
 `fleet deploy`. It covers every step of the `pushEnv()` workflow, the Infisical
-CLI bootstrap, and the three [environment configuration shapes](./env-configuration-shapes.md).
+SDK integration, and the three [environment configuration shapes](./env-configuration-shapes.md).
 
 ## Why a Dedicated Troubleshooting Page
 
 The `fleet env` workflow crosses several system boundaries -- local filesystem,
-YAML parsing, Zod validation, SSH transport, remote shell execution, Infisical
-API, and file permissions. Each boundary produces different error signatures. A
-centralized reference prevents operators from guessing which layer failed.
+YAML parsing, Zod validation, the Infisical SDK (running locally), SSH
+transport, remote shell execution, and file permissions. Each boundary produces
+different error signatures. A centralized reference prevents operators from
+guessing which layer failed.
 
 ## Error Reference
 
 ### Step-by-step failure modes
 
-The `pushEnv()` function at `src/env/env.ts:8-72` runs seven steps. Each step
+The `pushEnv()` function at `src/env/env.ts:6-65` runs six steps. Each step
 has distinct failure modes:
 
 | Step | Operation | Possible failure | Error message pattern |
@@ -31,14 +32,12 @@ has distinct failure modes:
 | 3 | SSH connect | Connection refused | Depends on SSH library; typically `connect ECONNREFUSED` or `Authentication failed` |
 | 4 | Read state | State file missing | Depends on `readState()` implementation; new servers have no state |
 | 5 | Stack lookup | Stack not deployed | `Stack "{name}" not found in server state. Run 'fleet deploy' first.` |
-| 6 | Infisical bootstrap | Install failed | `Failed to install Infisical CLI: command exited with code {code}` |
-| 6 | Infisical bootstrap | Verify failed | `Infisical CLI installation could not be verified: command exited with code {code}` |
-| 7 | File upload (heredoc) | Write failed | `Failed to upload file to {path}: command exited with code {code}` |
-| 7 | File upload (base64) | Write failed | `Failed to upload file to {path}: command exited with code {code}` |
-| 7 | Infisical export | Export failed | `Failed to export secrets via Infisical CLI: {stderr}` |
-| 7 | chmod | Permission denied | `Failed to set .env file permissions: {stderr}` |
-| 7 | Path traversal | Escape attempt | `env.file path "{path}" resolves outside the project directory` |
-| 7 | File not found | Local file missing | `env.file not found: {file} (resolved to {fullPath})` |
+| 6 | Resolve secrets (SDK fetch) | Auth failure | SDK throws on `client.auth().accessToken(token)` -- invalid or expired token |
+| 6 | Resolve secrets (SDK fetch) | List failure | SDK throws on `client.secrets().listSecrets()` -- 403, 404, or network error |
+| 6 | File upload (heredoc) | Write failed | `Failed to upload file to {path}: command exited with code {code}` |
+| 6 | File upload (base64) | Write failed | `Failed to upload file to {path}: command exited with code {code}` |
+| 6 | Path traversal | Escape attempt | `env.file path "{path}" resolves outside the project directory` |
+| 6 | File not found | Local file missing | `env.file not found: {file} (resolved to {fullPath})` |
 
 ### Configuration errors
 
@@ -101,9 +100,9 @@ Error (ENV_CONFLICT): "env.entries" and "env.infisical" are both configured,
 but "env.infisical" will overwrite the ".env" file produced by "env.entries".
 ```
 
-**Why this happens**: At runtime, entries are written first via heredoc, then
-`infisical export` redirects output to the same `.env` file using `>` (not
-`>>`), overwriting the entries.
+**Why this happens**: At runtime, `resolveSecrets()` writes entries first via
+heredoc upload, then fetches secrets from the Infisical SDK and uploads the
+result via base64 to the same `.env` path, overwriting the entries entirely.
 
 **Resolution**: Use one source or the other. To combine values from both
 sources, either add the entry-style variables to Infisical, or use the file
@@ -113,7 +112,7 @@ reference shape with a pre-merged `.env` file.
 
 #### Connection failures
 
-The SSH connection at `src/env/env.ts:25-27` uses the `server` block from
+The SSH connection at `src/env/env.ts:23-25` uses the `server` block from
 `fleet.yml`. Common failures:
 
 | Symptom | Likely cause | Resolution |
@@ -124,21 +123,23 @@ The SSH connection at `src/env/env.ts:25-27` uses the `server` block from
 | `Host key verification failed` | Server key changed | Update `~/.ssh/known_hosts` or configure `server.strictHostKeyChecking` |
 
 After the workflow completes (success or failure), the SSH connection is closed
-in the `finally` block at `src/env/env.ts:68-71`.
+in the `finally` block at `src/env/env.ts:60-63`.
 
 #### SSH connection drops mid-operation
 
 If the SSH connection drops during the `resolveSecrets()` step:
 
-- **Heredoc upload**: Uses atomic `.tmp` + `mv` pattern
-  (`src/deploy/helpers.ts:145-148`). If the connection drops before `mv`, the
+- **Heredoc upload** (inline array entries): Uses atomic `.tmp` + `mv` pattern
+  (`src/deploy/helpers.ts:142-175`). If the connection drops before `mv`, the
   `.tmp` file is left on disk but the original `.env` is untouched.
-- **Base64 upload**: Same atomic pattern
-  (`src/deploy/helpers.ts:174-178`). Same safety guarantee.
-- **Infisical export**: Uses shell redirect (`>`). If the connection drops
-  during export, the `.env` file may be partially written or empty because the
-  redirect truncates the file before writing. There is no atomic pattern for
-  this code path.
+- **Base64 upload** (file reference and Infisical): Uses a single compound
+  command with atomic `.tmp` + `mv` (`src/deploy/helpers.ts:182-205`). If the
+  connection drops mid-command, the shell `&&` chain prevents `mv` from running,
+  leaving the original `.env` untouched.
+
+All three secret resolution paths (file reference, inline entries, and
+Infisical) use one of these two atomic upload methods. There is no non-atomic
+redirect path.
 
 **Recovery**: Rerun `fleet env`. The command is idempotent -- it overwrites the
 `.env` file completely on each run.
@@ -149,7 +150,7 @@ If the SSH connection drops during the `resolveSecrets()` step:
 Stack "myapp" not found in server state. Run 'fleet deploy' first.
 ```
 
-The `getStack()` function at `src/state/state.ts:93-98` looks up the stack name
+The `getStack()` function at `src/state/state.ts:99-104` looks up the stack name
 in `~/.fleet/state.json` on the remote server. This file is created during the
 first `fleet deploy` and records the path where each stack was deployed.
 
@@ -164,77 +165,88 @@ first `fleet deploy` and records the path where each stack was deployed.
 run `fleet env` separately if needed. Alternatively, check that `stack.name` in
 `fleet.yml` matches exactly what was used previously.
 
-### Infisical CLI bootstrap failures
+### Infisical SDK errors
 
-#### Installation failure
+Fleet uses the [`@infisical/sdk`](https://infisical.com/docs/sdks/languages/node)
+Node.js package to fetch secrets. The SDK runs locally within the Fleet process
+-- no Infisical software is installed on the remote server. The two SDK calls
+are `client.auth().accessToken(token)` and `client.secrets().listSecrets()`,
+both at `src/deploy/helpers.ts:282-289`.
 
-```
-Failed to install Infisical CLI: command exited with code 1 — E: Unable to locate package infisical
-```
+Errors from the SDK are thrown as JavaScript exceptions and caught by the
+`pushEnv()` try/catch block at `src/env/env.ts:53-59`, which prints
+`Env push failed: {message}` and exits with code 1.
 
-The installer at `src/deploy/infisical.ts:16-24` downloads the APT repo setup
-script from Cloudsmith, runs `apt-get update`, then installs the `infisical`
-package.
+#### Authentication failure (invalid or expired token)
 
-**Common causes**:
+The `client.auth().accessToken(token)` call at `src/deploy/helpers.ts:283`
+fails if the token is invalid, expired, or revoked.
 
-| Cause | Resolution |
-|-------|------------|
-| Non-Debian server | Pre-install the CLI; see [Platform Limitations](./infisical-integration.md#platform-limitations) |
-| Cloudsmith unreachable | Check outbound HTTPS to `dl.cloudsmith.io`; retry later |
-| `sudo` not available | Ensure the SSH user has passwordless `sudo` |
-| Disk full | Free space on the remote server |
-| APT lock held | Another `apt` process is running; wait or kill it |
+**Symptoms**: Error message referencing `401`, `Unauthorized`, or an SDK-specific
+authentication error.
 
-#### Verification failure
+**Resolution**: Generate a new machine identity access token in the Infisical
+dashboard. Update the `env.infisical.token` value in `fleet.yml` or the
+environment variable it references.
 
-```
-Infisical CLI installation could not be verified: command exited with code 127
-```
+#### Authorization failure (403)
 
-The post-install verification at `src/deploy/infisical.ts:27-33` runs
-`infisical --version`. Exit code 127 means the binary is not on PATH.
+The `client.secrets().listSecrets()` call at `src/deploy/helpers.ts:285-289`
+fails with 403 when the identity associated with the token does not have access
+to the specified project, environment, or path.
 
-**Resolution**: Check that `/usr/bin` (or wherever the package installs) is
-in PATH for the SSH session. Non-interactive SSH sessions may have a minimal
-PATH.
+**Symptoms**: Error message referencing `403` or `Forbidden`.
 
-### Infisical CLI export failures
+**Resolution**: In the Infisical dashboard, verify the machine identity has
+read access to the project (`project_id`), the target environment
+(`environment`), and the secret path (`path`).
 
-```
-Failed to export secrets via Infisical CLI: {stderr}
-```
+#### Resource not found (404)
 
-The `infisical export` command at `src/deploy/helpers.ts:270-271` can fail for
-several reasons:
+The `listSecrets()` call can return 404 when the `project_id`, `environment`,
+or `path` does not exist in Infisical.
 
-| Stderr pattern | Cause | Resolution |
-|---------------|-------|------------|
-| `401 Unauthorized` | Token expired or invalid | Generate a new token in the Infisical dashboard; update `fleet.yml` or env var |
-| `403 Forbidden` | Token lacks access to the project/environment/path | Check token permissions in Infisical dashboard |
-| `404 Not Found` | Wrong `project_id`, `environment`, or `path` | Verify values match Infisical dashboard; paths are case-sensitive |
-| `connection refused` / `timeout` | Infisical API unreachable | Check outbound HTTPS to `app.infisical.com` (or self-hosted URL) |
-| `command not found` | CLI not installed despite bootstrap | Check bootstrap logs; may indicate PATH issue |
+**Symptoms**: Error message referencing `404` or `Not Found`.
 
-#### Partial or empty `.env` file after export failure
+**Resolution**: Verify all three values match exactly what is configured in the
+Infisical dashboard. Paths and environment slugs are case-sensitive.
 
-When the `infisical export` command fails, the `.env` file may be in one of
-three states:
+#### Network failure (Infisical API unreachable)
 
-1. **Empty (0 bytes)**: The shell redirect `>` truncated the file before
-   `infisical export` produced any output. This is the most common case.
-2. **Partially written**: The export started producing output but the process
-   was killed or the connection dropped mid-stream.
-3. **Previous content intact**: This only happens if the failure occurred before
-   the shell redirect was established (unlikely).
+The SDK makes HTTPS requests to the Infisical API (default:
+`https://app.infisical.com`). If the API is unreachable from the machine
+running Fleet, the SDK throws a network error.
 
-In cases 1 and 2, the `.env` file no longer contains valid secrets. Services
-that were running before will continue running with their existing in-memory
-environment until restarted.
+**Symptoms**: Error messages referencing `ECONNREFUSED`, `ETIMEDOUT`,
+`ENOTFOUND`, or similar network errors.
 
-**Recovery**: Fix the root cause (token, network, permissions), then rerun
-`fleet env`. Do not restart services until the `.env` file is confirmed
-correct.
+**Resolution**: Verify outbound HTTPS connectivity from the local machine (not
+the remote server) to the Infisical API endpoint. For self-hosted Infisical,
+check the custom API URL.
+
+#### Node.js version incompatibility
+
+The `@infisical/sdk` package (v5+) requires Node.js 20 or later. If Fleet is
+running on an older Node.js version, the SDK may fail to instantiate.
+
+**Symptoms**: Errors during `require()` or `import` of `@infisical/sdk`, or
+unexpected runtime errors from the SDK internals.
+
+**Resolution**: Upgrade Node.js to version 20 or later.
+
+#### No retry or circuit-breaker
+
+The SDK call is a single attempt with no retry logic or circuit-breaker. If the
+Infisical API returns a transient error (500, 502, 503), the operation fails
+immediately.
+
+**Recovery**: Rerun `fleet env` after the transient issue resolves.
+
+#### Previously deployed `.env` remains untouched on failure
+
+When the SDK fetch fails, the error is thrown before `uploadFileBase64()` is
+called. The previously deployed `.env` file on the remote server is not
+modified. Services continue running with their existing environment.
 
 ### File upload failures
 
@@ -242,18 +254,20 @@ correct.
 
 ```
 Failed to upload file to /home/deploy/.fleet/stacks/myapp/.env:
-command exited with code 1 — Permission denied
+command exited with code 1 -- Permission denied
 ```
 
-The heredoc upload at `src/deploy/helpers.ts:140-162` runs
-`mkdir -p {dir} && cat << 'FLEET_EOF' > {tmpPath} ... && mv {tmpPath} {path}`.
+The heredoc upload at `src/deploy/helpers.ts:142-175` runs separate SSH
+commands for `mkdir -p`, `cat << 'FLEET_EOF' > {tmpPath}`, `mv`, and
+optionally `chmod`.
 
 **Common causes**: Disk full, directory permissions, or SELinux restrictions.
 
 #### Base64 upload failure
 
-Same error pattern. The base64 upload at `src/deploy/helpers.ts:169-192` runs
-`echo '{base64}' | base64 -d > {tmpPath} && mv {tmpPath} {path}`.
+Same error pattern. The base64 upload at `src/deploy/helpers.ts:182-205` runs
+a single compound command:
+`mkdir -p {dir} && echo '{base64}' | base64 -d > {tmpPath} && mv {tmpPath} {path} && chmod {perms} {path}`.
 
 **Additional cause**: If the base64 string contains single quotes (it should
 not, since base64 uses `[A-Za-z0-9+/=]`), the shell command would break.
@@ -264,11 +278,12 @@ not, since base64 uses `[A-Za-z0-9+/=]`), the shell command would break.
 
 ```
 env.file path "../../etc/passwd" resolves outside the project directory
-— path traversal is not allowed
+-- path traversal is not allowed
 ```
 
-The check at `src/deploy/helpers.ts:216-219` ensures the resolved path starts
-with the config directory. This is a security measure, not a bug.
+The check at `src/deploy/helpers.ts:229-232` resolves the path with
+`path.resolve()` and verifies the result starts with the config directory plus
+a path separator. This is a security measure, not a bug.
 
 **Resolution**: Move the `.env` file inside the project directory, or use a
 symlink within the project that points to the actual file.
@@ -279,7 +294,7 @@ symlink within the project that points to the actual file.
 env.file not found: .env.production (resolved to /home/user/project/.env.production)
 ```
 
-The check at `src/deploy/helpers.ts:221-225` verifies the file exists before
+The check at `src/deploy/helpers.ts:234-237` verifies the file exists before
 reading.
 
 **Resolution**: Create the file at the expected path, or fix the `env.file`
@@ -290,24 +305,15 @@ value in `fleet.yml`.
 ### Does `fleet env` accept flags?
 
 No. The command registration at `src/commands/env.ts:4-19` defines no options
-or arguments:
-
-```typescript
-program
-  .command("env")
-  .description("Push or refresh secrets (.env file) for the current stack")
-  .action(async () => { ... });
-```
-
-All behavior is driven by `fleet.yml` configuration. There is no `--force`,
-`--dry-run`, or `--stack` flag. The command always reads `fleet.yml` from the
-current working directory.
+or arguments. All behavior is driven by `fleet.yml` configuration. There is no
+`--force`, `--dry-run`, or `--stack` flag. The command always reads `fleet.yml`
+from the current working directory.
 
 ### Error handling and exit codes
 
 The command uses a double try/catch pattern:
 
-1. **Inner try/catch** in `pushEnv()` (`src/env/env.ts:61-67`): Catches all
+1. **Inner try/catch** in `pushEnv()` (`src/env/env.ts:53-59`): Catches all
    errors, prints `Env push failed: {message}`, and calls `process.exit(1)`.
 2. **Outer try/catch** in the Commander action (`src/commands/env.ts:9-18`):
    Catches any error that escapes `pushEnv()` and also calls `process.exit(1)`.
@@ -324,34 +330,34 @@ If your services need to pick up the new values, restart them with 'fleet restar
 
 ## Security Considerations
 
-### Token in SSH command string
+### Token in local process memory only
 
-The Infisical token is interpolated into the command string passed to `exec()`.
-While it is not visible in `ps aux` output (because it is an env var prefix,
-not a flag), it may be visible in:
+The Infisical token is resolved from `process.env` or from the `fleet.yml`
+literal value by the config loader at `src/config/loader.ts:37-46`. It is
+passed to the Infisical SDK running in the local Fleet process. The token is
+never sent to the remote server -- it does not appear in any SSH command string,
+shell history, or `/proc/{pid}/environ` on the remote host.
 
-- SSH command logging on the server (if enabled)
-- `/proc/{pid}/environ` for the duration of the export command
-- Shell history if commands are logged
+The token is present in the local process's memory and `process.env` for the
+duration of the `fleet env` run. Standard local process security practices
+apply (e.g., restrict access to the machine running Fleet, avoid logging
+environment variables).
 
-See [Token Security](./infisical-integration.md#token-security) for mitigation
-recommendations.
+### File permissions timing window
 
-### File permissions
+All `.env` files are written with `0600` permissions. However, there is a brief
+timing window in both upload methods:
 
-All `.env` files are written with `0600` permissions. However:
-
-- The heredoc and base64 upload methods use atomic `.tmp` + `mv`. The `.tmp`
-  file is created with default umask permissions and then `chmod` is applied
-  after `mv`. There is a brief window where the `.tmp` file has broader
-  permissions.
-- The Infisical export writes directly to `.env` via redirect, then runs
-  `chmod 0600` as a separate command (`src/deploy/helpers.ts:280-285`). There
-  is a brief window where the file has default permissions.
+- **Heredoc upload** (`uploadFile`): The `.tmp` file is created with default
+  umask permissions. `chmod` is applied after `mv`. Between `mv` and `chmod`,
+  the file has broader permissions.
+- **Base64 upload** (`uploadFileBase64`): The `.tmp` file is created with
+  default umask permissions. `chmod` runs as the last step in the `&&` chain.
+  Between `mv` and `chmod`, the file has broader permissions.
 
 In practice, this window is milliseconds on a single-user deployment server.
 For high-security environments, consider restricting the deploy user's umask
-to `0077`.
+to `0077`. See [Security Model](./security-model.md) for a complete analysis.
 
 ### Services must be restarted
 
@@ -361,17 +367,17 @@ old environment values in memory. You must restart services to pick up changes:
 - `fleet restart` -- restarts all services in the stack
 - `fleet deploy` -- detects the env hash change and restarts affected services
 
-The success message at `src/env/env.ts:58-59` reminds operators of this.
+The success message at `src/env/env.ts:47-52` reminds operators of this.
 
 ## Schema Evolution
 
-The `env` field schema is defined at `src/config/schema.ts:57` as a Zod union.
+The `env` field schema is defined in `src/config/schema.ts` as a Zod union.
 Adding new shapes or fields requires:
 
 1. Updating the Zod schema in `src/config/schema.ts`
 2. Adding type narrowing branches in `resolveSecrets()`
-   (`src/deploy/helpers.ts:198-287`)
-3. Updating `configHasSecrets()` (`src/deploy/helpers.ts:409-423`)
+   (`src/deploy/helpers.ts:211-299`)
+3. Updating `configHasSecrets()` in `src/deploy/helpers.ts`
 4. Adding `$VAR` expansion for any new secret-bearing fields in the config
    loader (`src/config/loader.ts:30-61`)
 5. Updating validation checks if new conflicts are possible
@@ -381,27 +387,34 @@ Adding new shapes or fields requires:
 
 When `fleet env` fails, work through these checks in order:
 
-1. **Is `fleet.yml` valid?** -- Run `fleet validate` or check the error output
+1. **Is `fleet.yml` valid?** -- Run [`fleet validate`](../validation/validate-command.md) or check the error output
    for Zod messages
 2. **Is there an env source?** -- Confirm `env` is present in `fleet.yml`
 3. **Can you SSH to the server?** -- Try `ssh user@host` manually
-4. **Is the stack deployed?** -- Check `~/.fleet/state.json` on the server
-5. **Is the Infisical token valid?** -- Test with `infisical export` manually
-   on the server
-6. **Is the network path clear?** -- Check outbound HTTPS to Infisical and
-   Cloudsmith from the server
+4. **Is the stack deployed?** -- Check [`~/.fleet/state.json`](../state-management/schema-reference.md) on the server
+5. **Is the Infisical token valid?** -- Verify the token locally by calling the
+   [Infisical API](https://infisical.com/docs/api-reference/overview/introduction)
+   or using the Infisical dashboard to confirm it is not expired or revoked
+6. **Is the Infisical API reachable?** -- Check outbound HTTPS from the local
+   machine (where Fleet runs) to `app.infisical.com` or your self-hosted URL
 7. **Is there disk space?** -- Check `df -h` on the remote server
 8. **Are file permissions correct?** -- Check the deploy user's write access to
    the stack directory
+9. **Is Node.js 20+ installed?** -- Run `node --version` locally; the
+   `@infisical/sdk` requires Node.js 20 or later
 
 ## Related documentation
 
 - [Environment and Secrets Overview](./overview.md) -- the complete `fleet env`
   workflow
-- [Infisical Integration](./infisical-integration.md) -- CLI bootstrap,
-  authentication, and network requirements
+- [Infisical Integration](./infisical-integration.md) -- SDK authentication,
+  secret fetching, and network requirements
 - [Environment Configuration Shapes](./env-configuration-shapes.md) -- the
   three `env` field formats
+- [Security Model](./security-model.md) -- file permissions, path traversal,
+  and transport security
+- [State and Change Detection](./state-data-model.md) -- how `env_hash` drives
+  the classification decision tree
 - [Configuration Schema Reference](../configuration/schema-reference.md) --
   full `fleet.yml` specification
 - [Secrets Resolution (Deploy)](../deploy/secrets-resolution.md) -- the same
@@ -414,3 +427,9 @@ When `fleet env` fails, work through these checks in order:
   are executed
 - [SSH Authentication](../ssh-connection/authentication.md) -- diagnosing SSH
   connection failures
+- [Validation Overview](../validation/overview.md) -- the pre-flight check
+  system that catches `ENV_CONFLICT` and other configuration errors
+- [Fleet Root Troubleshooting](../fleet-root/troubleshooting.md) -- related
+  troubleshooting for project root discovery issues
+- [Configuration Overview](../configuration/overview.md) -- how `fleet.yml` is
+  loaded and validated before `fleet env` runs

@@ -45,9 +45,9 @@ Additional files exist outside the fleet root:
 | `<fleet-root>/proxy/compose.yml`          | `writeProxyCompose`                | `src/proxy/compose.ts:33-51`             |
 | `<fleet-root>/stacks/<name>/`             | Deploy pipeline (step 6)           | `src/deploy/deploy.ts:117-126`           |
 | `<fleet-root>/stacks/<name>/compose.yml`  | Deploy pipeline (step 7)           | `src/deploy/deploy.ts:128-134`           |
-| `<fleet-root>/stacks/<name>/.env`         | `resolveSecrets`                   | `src/deploy/helpers.ts:198-287`          |
+| `<fleet-root>/stacks/<name>/.env`         | [`resolveSecrets`](../deploy/secrets-resolution.md) | `src/deploy/helpers.ts:198-287`          |
 | `~/.fleet-root`                           | `resolveFleetRoot`                 | `src/fleet-root/resolve.ts:15` or `:41`  |
-| `~/.fleet/state.json`                     | `writeState`                       | `src/state/state.ts:74-91`              |
+| `~/.fleet/state.json`                     | [`writeState`](../state-management/state-lifecycle.md#atomic-write-protocol) | `src/state/state.ts:74-91`              |
 
 ## How constants are used across the codebase
 
@@ -128,7 +128,7 @@ For state inspection:
 cat ~/.fleet/state.json | python3 -m json.tool
 ```
 
-## Related Documentation
+## Related documentation
 
 - [Fleet Root Overview](./overview.md) -- fleet root resolution and design
   decisions
@@ -145,3 +145,7 @@ cat ~/.fleet/state.json | python3 -m json.tool
   stack directories under the fleet root
 - [Secrets Resolution](../deploy/secrets-resolution.md) -- how `.env` files
   are written to stack directories
+- [Proxy Docker Compose](../caddy-proxy/proxy-compose.md) -- the Caddy compose
+  file stored under the proxy directory
+- [Configuration Schema Reference](../configuration/schema-reference.md) --
+  `STACK_NAME_REGEX` and stack naming constraints

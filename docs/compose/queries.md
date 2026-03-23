@@ -1,13 +1,13 @@
 # Compose Query Functions
 
-## What
+## What this covers
 
 The query module ([`src/compose/queries.ts`](../../src/compose/queries.ts))
 provides six pure functions that interrogate a `ParsedComposeFile` without
 performing any I/O or mutations. These functions are the primary interface
 through which other Fleet modules inspect service configuration.
 
-## Why
+## Why it exists
 
 Separating queries from parsing keeps the parser focused on data transformation
 and ensures that inspection logic is independently testable. Every query
@@ -28,7 +28,9 @@ strings. This is equivalent to `Object.keys(compose.services)`.
 **Consumers:** Used by the deployment pipeline
 ([`src/deploy/deploy.ts`](../../src/deploy/deploy.ts),
 [`src/deploy/helpers.ts`](../../src/deploy/helpers.ts)) to enumerate which
-services to process.
+services to process. See the
+[Deploy Sequence](../deploy/deploy-sequence.md) for how service names feed
+into the 17-step pipeline.
 
 ### serviceExists
 
@@ -151,3 +153,7 @@ services need redeployment on every deploy cycle.
   how `alwaysRedeploy` affects deployment decisions
 - [Service Classification](../deploy/service-classification-and-hashing.md) --
   overview of the classification system that consumes these queries
+- [Change Detection Overview](../deploy/change-detection-overview.md) --
+  how query results feed into the change detection feedback loop
+- [Validation Codes Reference](../validation/validation-codes.md) -- validation
+  codes for compose-level checks that use these queries

@@ -1,7 +1,7 @@
 # Compose File Detection
 
 The `detectComposeFile()` function in
-[`src/init/utils.ts`](../../../src/init/utils.ts) locates the Docker Compose file
+[`src/init/utils.ts`](../../src/init/utils.ts) locates the Docker Compose file
 in the project directory. It is called during [`fleet init`](../cli-entry-point/init-command.md) to determine which
 compose file to reference in the generated `fleet.yml`.
 
@@ -120,13 +120,13 @@ rarely have both files, but it is worth noting for edge cases.
 ## How Compose Files Are Parsed
 
 Once a compose file is detected and confirmed to exist on disk, it is parsed by
-`loadComposeFile()` in [`src/compose/parser.ts`](../../../src/compose/parser.ts).
+`loadComposeFile()` in [`src/compose/parser.ts`](../../src/compose/parser.ts).
 The parser reads the file as UTF-8 text, parses YAML using the 1.2 core schema,
 extracts the `services` top-level key, and normalizes port mappings into
 `NormalizedPort` objects. For full details on port normalization, YAML schema
 implications, and edge cases, see [Compose Parser Internals](../compose/parser.md).
 
-## Related Documentation
+## Related documentation
 
 - [Project Initialization Overview](overview.md) -- full init workflow
 - [YAML Generation Internals](fleet-yml-generation.md) -- how detected compose
@@ -140,5 +140,7 @@ implications, and edge cases, see [Compose Parser Internals](../compose/parser.m
   by parsing
 - [Configuration Overview](../configuration/overview.md) -- how `fleet.yml`
   is structured and loaded
+- [Configuration Loading and Validation](../configuration/loading-and-validation.md)
+  -- how the generated `fleet.yml` is loaded and validated
 - [Validation Overview](../validation/overview.md) -- checks that run against
   the compose file after detection

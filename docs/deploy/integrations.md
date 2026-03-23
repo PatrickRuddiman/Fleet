@@ -36,6 +36,26 @@ docker --version          # Should show 20.10 or later
 docker compose version    # Should show v2.x
 ```
 
+### What Happens with Docker Compose V1 Only
+
+If only the legacy `docker-compose` (V1) binary is installed (without the V2
+plugin), all `docker compose` commands will fail with `docker: 'compose' is not a
+docker command`. Fleet does not fall back to the V1 binary — there is no
+compatibility layer or version detection.
+
+**Resolution**: Install the Docker Compose V2 plugin:
+
+```bash
+# Debian/Ubuntu
+sudo apt-get update && sudo apt-get install docker-compose-plugin
+
+# Or install via Docker's official convenience script
+# (installs both Docker Engine and Compose plugin)
+curl -fsSL https://get.docker.com | sh
+```
+
+After installation, verify with `docker compose version`.
+
 ### How `<no value>` Is Handled
 
 When `docker image inspect` is run on a locally-built image that was never pushed
@@ -157,14 +177,22 @@ for how certificates are provisioned and renewed.
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/load` | POST | Replace entire Caddy configuration (bootstrap) |
+| `/load` | POST | Replace entire Caddy configuration atomically |
 | `/config/` | GET | Export current full configuration |
-| `/config/apps/http/servers/fleet/routes` | POST | Append a route to the fleet server |
-| `/id/{caddyId}` | DELETE | Remove a route by its `@id` |
+| `/id/{caddyId}` | DELETE | Remove a route by its `@id` (used by `fleet proxy reload`) |
+| `/config/apps/http/servers/fleet/routes` | POST | Append a route (used by individual route operations) |
+
+During deployment, Fleet uses the **atomic `/load` pattern**: it GETs the full
+config, merges all stacks' routes from Fleet state, and POSTs the complete config
+to `/load`. This replaces the entire configuration atomically, ensuring
+idempotency and preventing duplicate `@id` errors. See
+[Caddy Route Management](caddy-route-management.md) for details.
 
 The `@id` field in route JSON objects provides a shortcut for addressing routes
 without traversing the full config path. Fleet uses the format
-`{stackName}__{serviceName}` for route IDs.
+`{stackName}__{domain-slug}` for route IDs, where `domain-slug` is the domain
+with non-alphanumeric characters replaced by hyphens and lowercased (e.g.,
+`myapp__example-com` for domain `example.com`). See `src/caddy/commands.ts:11-17`.
 
 ### Debugging Caddy
 
@@ -175,8 +203,8 @@ ssh user@server "docker exec fleet-proxy curl -s http://localhost:2019/config/ |
 # List all registered routes
 ssh user@server "docker exec fleet-proxy curl -s http://localhost:2019/config/apps/http/servers/fleet/routes | jq"
 
-# Check a specific route
-ssh user@server "docker exec fleet-proxy curl -s http://localhost:2019/id/{stackName}__{serviceName} | jq"
+# Check a specific route by @id (domain slug format)
+ssh user@server "docker exec fleet-proxy curl -s http://localhost:2019/id/{stackName}__{domain-slug} | jq"
 
 # View Caddy logs
 ssh user@server "docker logs fleet-proxy --tail 100"
@@ -215,91 +243,92 @@ ssh user@server "docker logs fleet-proxy 2>&1 | grep -i 'certificate\|tls\|acme'
 ### How Fleet Uses It
 
 [Infisical](https://infisical.com/docs) is a secrets management platform. Fleet
-integrates via its CLI tool, installed on the remote server and used to export
-secrets in dotenv format. See [Secrets Resolution](secrets-resolution.md) for
-configuration details.
+integrates via the **`@infisical/sdk` Node.js SDK**, which runs locally on the
+machine executing `fleet deploy` (not on the remote server). The SDK fetches
+secrets from the Infisical API, formats them as dotenv content, and uploads the
+resulting `.env` file to the remote server. See
+[Secrets Resolution](secrets-resolution.md) for configuration details.
 
 **Source files**:
 
-- `src/deploy/infisical.ts:8-33` -- CLI bootstrap (check, install, verify)
-- `src/deploy/deploy.ts:146-149` -- conditional bootstrap during deployment
-- `src/deploy/helpers.ts:266-286` -- `infisical export` for secret retrieval
-- `src/env/env.ts:45-47` -- bootstrap during `fleet env push`
+- `src/deploy/helpers.ts:3` -- `import { InfisicalSDK } from "@infisical/sdk"`
+- `src/deploy/helpers.ts:279-298` -- SDK client instantiation, authentication,
+  secret retrieval, and `.env` upload
 
-### Platform Support for CLI Bootstrap
+### How It Works
 
-The automatic installer uses `apt-get` and only works on Debian-based
-distributions. For other distributions, install the Infisical CLI manually:
+The integration follows three steps, all within `resolveSecrets()`:
 
-| Distribution | Installation |
-|-------------|-------------|
-| Debian/Ubuntu | Automatic via Fleet bootstrap |
-| Alpine | `wget -qO- 'https://artifacts-cli.infisical.com/setup.apk.sh' \| sudo sh && apk update && sudo apk add infisical` |
-| RHEL/CentOS | `curl -1sLf 'https://artifacts-cli.infisical.com/setup.rpm.sh' \| sudo -E bash && sudo yum install infisical` |
+1. **Instantiate client**: `new InfisicalSDK()`
+2. **Authenticate**: `client.auth().accessToken(token)` — uses a pre-obtained
+   access token (typically from Universal Auth or another machine identity method)
+3. **Fetch secrets**: `client.secrets().listSecrets({ projectId, environment, secretPath })`
+4. **Format and upload**: Secrets are formatted as `KEY=VALUE` lines and uploaded
+   to the remote server as `{stackDir}/.env` via base64 encoding
+
+No CLI installation or remote server tooling is required. The Infisical SDK
+runs entirely in the local Node.js process.
 
 ### Authentication and Token Management
 
-The Infisical token is passed as an environment variable prefix to avoid process
-list exposure:
+The `token` field in the `fleet.yml` Infisical configuration provides a
+pre-obtained access token. This token is passed to
+`client.auth().accessToken(token)` which sets it for all subsequent API calls.
 
-```bash
-INFISICAL_TOKEN={token} infisical export --projectId=... --env=... --format=dotenv
+The token field supports `$VAR` expansion at config load time, allowing CI/CD
+pipelines to inject the token via environment variables:
+
+```yaml
+env:
+  infisical:
+    token: $INFISICAL_TOKEN
+    project_id: proj_abc123
+    environment: production
+    path: /
 ```
 
-The token is still visible in `/proc/{pid}/environ` on Linux while the command
-runs. The `token` field in `fleet.yml` supports `$VAR` expansion for CI/CD
-integration.
+**Token types**: The SDK's `accessToken()` method accepts a pre-obtained token.
+In practice, this is typically obtained through:
 
-To rotate tokens: generate a new token in the Infisical dashboard, update the
-environment variable, and redeploy. No token caching exists on the remote server.
+- **Universal Auth**: Client credentials flow using a client ID and client
+  secret, producing an access token. See
+  [Universal Auth](https://infisical.com/docs/documentation/platform/identities/universal-auth).
+- **Service tokens** (legacy): Older Infisical token type, still supported.
+
+**Token rotation**: Generate a new token in the Infisical dashboard (or via the
+API), update the environment variable or `fleet.yml`, and redeploy. No token
+state is cached locally or on the remote server.
 
 ### Network Requirements
 
-The remote server needs outbound HTTPS access to:
+The **local machine** (where `fleet deploy` runs) needs outbound HTTPS access to:
 
 | Hostname | Purpose |
 |----------|---------|
-| `dl.cloudsmith.io` | CLI installation (first deploy only) |
-| `app.infisical.com` (or self-hosted) | Secret export |
+| `app.infisical.com` (or self-hosted URL) | SDK API calls for secret retrieval |
+
+The remote server does **not** need access to Infisical — secrets are fetched
+locally and uploaded over SSH.
 
 ### Accessing the Infisical Dashboard
 
 - **Infisical Cloud**: [https://app.infisical.com/](https://app.infisical.com/)
 - **Self-hosted**: Navigate to your instance URL
 
+### Troubleshooting
+
+| Problem | Diagnosis | Resolution |
+|---------|-----------|-----------|
+| "Unauthorized" or 401 from SDK | Token is invalid or expired | Rotate the token in the Infisical dashboard |
+| Wrong secrets returned | Incorrect `project_id`, `environment`, or `path` | Verify values against the Infisical dashboard |
+| Network timeout | Local machine cannot reach Infisical API | Check firewall rules, proxy settings, and DNS |
+| `$INFISICAL_TOKEN` not expanded | Environment variable not set | Export the variable before running `fleet deploy` |
+
 ### Official Documentation
 
-- [Infisical CLI Overview](https://infisical.com/docs/cli/overview)
-- [Infisical CLI Export](https://infisical.com/docs/cli/commands/export)
+- [Infisical Node.js SDK](https://infisical.com/docs/sdks/languages/node)
 - [Universal Auth](https://infisical.com/docs/documentation/platform/identities/universal-auth)
-
----
-
-## Cloudsmith Package Repository
-
-### How Fleet Uses It
-
-Cloudsmith hosts the Infisical CLI APT repository. The bootstrap script is
-downloaded from `https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.deb.sh`.
-
-**Source file**: `src/deploy/infisical.ts:17`
-
-### Outage Impact
-
-- **CLI already installed**: No impact. The bootstrap check succeeds and the
-  installer is never called.
-- **CLI not installed**: Deployment fails. Re-run after the outage resolves.
-
-### Version Pinning
-
-The installation command (`apt-get install -y infisical`) does not pin a specific
-version. Consider manual installation with version pinning for production
-environments where reproducible builds are required.
-
-### Official Documentation
-
-- [Cloudsmith Help Center](https://help.cloudsmith.io/)
-- [Cloudsmith Status Page](https://status.cloudsmith.io/)
+- [Infisical Secrets API](https://infisical.com/docs/api-reference/endpoints/secrets/list)
 
 ---
 
@@ -403,7 +432,7 @@ pre-flight checks.
 
 - [Zod documentation](https://zod.dev)
 
-## Related Documentation
+## Related documentation
 
 - [Service Classification and Hashing Overview](service-classification-and-hashing.md)
 - [Classification Decision Tree](classification-decision-tree.md)
@@ -412,9 +441,13 @@ pre-flight checks.
   when integrations fail mid-deployment
 - [Infisical Integration](../env-secrets/infisical-integration.md)
 - [Env Secrets Troubleshooting](../env-secrets/troubleshooting.md) -- detailed
-  troubleshooting for Infisical CLI and secret resolution
+  troubleshooting for Infisical SDK and secret resolution
 - [Deployment Pipeline](../deployment-pipeline.md)
 - [TLS and ACME Certificate Management](../caddy-proxy/tls-and-acme.md) --
   how Caddy handles TLS certificates
 - [SSH Authentication](../ssh-connection/authentication.md) -- SSH key and
   agent configuration details
+- [SSH Connection Lifecycle](../ssh-connection/connection-lifecycle.md) -- how
+  SSH connections are managed during deployment
+- [Security Model](../env-secrets/security-model.md) -- security properties
+  of secrets transport and Infisical token isolation

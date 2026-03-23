@@ -12,10 +12,13 @@ service that needs to be reachable over HTTP/HTTPS requires a reverse proxy to
 terminate TLS and route requests by hostname. The bootstrap module sets up this
 reverse proxy (Caddy) as a Docker container, creates the shared Docker network
 that connects it to application containers, and posts an initial configuration
-to the [Caddy Admin API](../caddy-proxy/caddy-admin-api.md).
+to the [Caddy Admin API](../caddy-proxy/caddy-admin-api.md). For how Fleet
+validates configurations before deployment, see the
+[Validation Overview](../validation/overview.md).
 
 Without bootstrap, there is no proxy to route traffic, no Docker network for
-inter-container communication, and no state file to track what has been deployed.
+inter-container communication, and no
+[state file](../state-management/overview.md) to track what has been deployed.
 
 ## Source files
 
@@ -111,3 +114,7 @@ deploy pipeline (e.g., a future standalone `fleet bootstrap` CLI command).
   Full `fleet.yml` field specification including `acme_email`
 - [Deploy Failure Recovery](../deploy/failure-recovery.md) -- What happens when
   the pipeline fails at the bootstrap step
+- [Operational Commands](../cli-commands/operational-commands.md) -- CLI commands
+  that depend on a bootstrapped server
+- [Deploy Integrations](../deploy/integrations.md) -- Docker, Caddy, and SSH
+  integration details used during bootstrap

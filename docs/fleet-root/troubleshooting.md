@@ -203,7 +203,11 @@ non-recoverable error.
   connection and permission issues
 - [Server Bootstrap](../bootstrap/server-bootstrap.md) — the bootstrap sequence
   that calls `resolveFleetRoot`
+- [Bootstrap Sequence](../bootstrap/bootstrap-sequence.md) — step-by-step
+  bootstrap flow including fleet root resolution
 - [State Management Schema](../state-management/schema-reference.md) — the
   `fleet_root` field in `state.json`
 - [State Management Operations](../state-management/operations-guide.md) —
   inspecting, backing up, and recovering state
+- [Configuration Overview](../configuration/overview.md) — how `fleet.yml`
+  server settings determine the SSH user context

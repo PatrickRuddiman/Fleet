@@ -25,8 +25,8 @@ Each mode addresses a different operational pattern:
 1. **Array mode** -- simple, inline key-value pairs for non-sensitive
    configuration. Good for quick setups where secrets are not involved.
 2. **File mode** -- references a local `.env` file that Fleet uploads to the
-   server. Recommended for CI/CD pipelines where secrets are written to a file
-   at build time.
+   server. Recommended for [CI/CD pipelines](../ci-cd-integration.md) where
+   secrets are written to a file at build time.
 3. **Object mode** -- combines optional inline entries with optional Infisical
    integration for teams using a secrets management platform.
 
@@ -96,8 +96,8 @@ The expansion logic is in `src/config/loader.ts:37-46`:
 
 ### CI/CD usage
 
-In CI/CD contexts, `$VAR` references should be injected through the
-pipeline's secret management:
+In [CI/CD](../ci-cd-integration.md) contexts, `$VAR` references should be
+injected through the pipeline's secret management:
 
 - **GitHub Actions:** Use `secrets.*` in your workflow YAML to set environment
   variables that Fleet can resolve.
@@ -167,5 +167,9 @@ secrets out of `fleet.yml`.
   examples for each env mode
 - [Service Classification](../deploy/service-classification-and-hashing.md) --
   how env hash changes trigger service restarts
+- [Security Model](../env-secrets/security-model.md) -- file permissions, path
+  traversal, and Docker container access
+- [Environment and Secrets Overview](../env-secrets/overview.md) -- the
+  standalone `fleet env` command for secrets-only updates
 - [Validation Overview](../validation/overview.md) -- pre-flight checks
   including `ENV_CONFLICT` detection

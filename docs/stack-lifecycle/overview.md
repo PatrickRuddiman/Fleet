@@ -66,7 +66,9 @@ All three operations follow an identical setup sequence before diverging at the
 action step:
 
 1. **Load configuration** -- read `fleet.yml` from the current working directory
-   via `loadFleetConfig()`.
+   via `loadFleetConfig()`. See
+   [Configuration Loading](../configuration/loading-and-validation.md) for
+   details.
 2. **Open SSH connection** -- connect to the remote server defined in
    `fleet.yml` via `createConnection()`.
 3. **Read server state** -- fetch `~/.fleet/state.json` from the remote server
@@ -157,6 +159,8 @@ so they must be removed.
   that creates stacks
 - [Deploy Command](../cli-entry-point/deploy-command.md) -- the CLI entry point
   for deployments
+- [Deploy Failure Recovery](../deploy/failure-recovery.md) -- recovery
+  procedures for partial deployment failures
 - [Process Status](../process-status/overview.md) -- monitoring running stacks
   with `fleet ps`
 - [CLI Integrations](../cli-commands/integrations.md) -- external libraries

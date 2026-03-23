@@ -1,6 +1,6 @@
 # Docker Compose Parsing and Queries
 
-## What
+## What This Module Does
 
 The compose module (`src/compose/`) is Fleet's interface to Docker Compose
 project definitions. It reads a `docker-compose.yml` (or equivalent) file from
@@ -17,7 +17,7 @@ The module is organized into four files:
 | [`src/compose/queries.ts`](../../src/compose/queries.ts) | Pure functions that interrogate a `ParsedComposeFile` |
 | [`src/compose/index.ts`](../../src/compose/index.ts) | Barrel re-export of all public types and functions |
 
-## Why
+## Why This Module Exists
 
 Fleet needs to understand a project's service topology before it can deploy,
 validate, or initialize anything. Rather than scattering YAML-parsing logic
@@ -36,7 +36,7 @@ This separation provides three benefits:
    fields Fleet acts on, ignoring the remaining ~40+ Compose attributes it does
    not need. This keeps the data model small and intentional.
 
-## How
+## How It Works
 
 ### Parse pipeline
 
@@ -55,9 +55,12 @@ This separation provides three benefits:
 Six exported functions operate on the parsed result:
 
 - `getServiceNames` / `serviceExists` -- basic enumeration
-- `findServicesWithoutImageOrBuild` -- validation helper
+- `findServicesWithoutImageOrBuild` -- validation helper (used by
+  [Compose Configuration Checks](../validation/compose-checks.md))
 - `findHostPortBindings` / `findReservedPortConflicts` -- port conflict detection
 - `alwaysRedeploy` / `getAlwaysRedeploy` -- deployment strategy classification
+  (see [Service Classification](../deploy/service-classification-and-hashing.md)
+  for how this affects the deploy pipeline)
 
 See [queries.md](queries.md) for detailed behavior of each function.
 
@@ -121,6 +124,8 @@ validation layer (see [../deploy/classification-decision-tree.md](../deploy/clas
 - [Validation](../deploy/classification-decision-tree.md) -- how parsed compose data feeds into deploy classification
 - [Validation Overview](../validation/overview.md) -- pre-flight checks that
   use compose data to detect misconfigurations
+- [Compose Configuration Checks](../validation/compose-checks.md) -- compose-
+  specific validation rules (port conflicts, service references)
 - [Caddy proxy](../caddy-proxy/) -- why ports 80 and 443 are reserved
 - [Configuration](../configuration/overview.md) -- project-level configuration that complements compose data
 - [Configuration Schema Reference](../configuration/schema-reference.md) --
@@ -128,3 +133,7 @@ validation layer (see [../deploy/classification-decision-tree.md](../deploy/clas
 - [Deployment pipeline](../deployment-pipeline.md) -- how compose parsing fits into the deploy flow
 - [Project Initialization](../project-init/overview.md) -- how `fleet init`
   uses compose data to generate `fleet.yml`
+- [Validation Troubleshooting](../validation/troubleshooting.md) -- common
+  compose-related validation failures and resolutions
+- [Fleet Configuration Checks](../validation/fleet-checks.md) -- how compose
+  data feeds into fleet.yml validation

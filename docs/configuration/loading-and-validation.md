@@ -126,7 +126,9 @@ Source: `src/config/loader.ts:29-61`
 If the parsed config contains an `env.infisical` block, the loader expands
 `$VAR` references in all four Infisical fields. See
 [Environment Variables](./environment-variables.md#var-expansion-mechanism) for
-the full expansion logic.
+the full expansion logic and
+[Infisical Integration](../env-secrets/infisical-integration.md) for how
+expanded values are used during secret fetching.
 
 ## How Zod validation errors are formatted
 
@@ -235,10 +237,14 @@ intentional for a CLI tool:
 - [Integrations](./integrations.md) -- details on the Zod and yaml libraries
 - [Validate Command](../validation/validate-command.md) -- CLI command that
   exercises the validation pipeline
+- [Validation Codes Reference](../validation/validation-codes.md) -- complete
+  list of all validation finding codes and resolutions
 - [Fleet Configuration Checks](../validation/fleet-checks.md) -- semantic
   checks beyond schema validation
 - [Compose Configuration Checks](../validation/compose-checks.md) -- cross-file
   validation against Docker Compose
+- [Secrets Resolution](../deploy/secrets-resolution.md) -- how the loaded
+  config drives environment variable resolution during deploy
 - [Deploy Command](../cli-entry-point/deploy-command.md) -- how configuration
   loading fits into the deploy lifecycle
 - [CI/CD Integration](../ci-cd-integration.md) -- using validation in CI

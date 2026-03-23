@@ -148,7 +148,9 @@ fields as optional for backward compatibility:
 However, the TypeScript interface in `src/state/types.ts:10-19` declares all
 these fields as required (non-optional). This means code that consumes
 `ServiceState` from the TypeScript type assumes all fields are present, while
-the Zod-validated data from older state files may lack them.
+the Zod-validated data from older state files may lack them. See
+[State Schema Reference](../state-management/schema-reference.md) for the
+complete field-by-field documentation.
 
 The `ps` command handles this safely by using optional chaining
 (`stackState.services?.[svc.service]`) and checking `serviceState.skipped_at`
@@ -184,4 +186,6 @@ fields are present.
 - [State schema reference](../state-management/schema-reference.md)
 - [State lifecycle](../state-management/state-lifecycle.md) -- schema evolution
   timeline and state flow across operations
+- [Operations Guide](../state-management/operations-guide.md) -- inspecting and
+  recovering state files
 - [Service classification](../deploy/classification-decision-tree.md)

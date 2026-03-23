@@ -89,24 +89,23 @@ The reload command (implemented in `src/reload/reload.ts`, see
 2. Verifies the `fleet-proxy` container is running (throws an error if not,
    suggesting `fleet deploy`)
 3. Reads the Fleet state file
-4. For each route in each stack:
-    - **Deletes** the existing Caddy route via `DELETE /id/{caddy_id}`
-    - **Re-creates** the route via `POST /config/apps/http/servers/fleet/routes`
-5. Reports success/failure counts
+4. Collects all routes from all stacks in state
+5. Performs an atomic read-modify-write cycle:
+    - **GETs** the full Caddy configuration to preserve TLS and server settings
+    - **Merges** the collected routes into the config
+    - **POSTs** the complete config to `/load` for atomic replacement
+6. Reports success/failure counts
 
-### Fault tolerance and rollback
+### Atomicity and rollback
 
-The reload loop is **fault-tolerant but does not roll back**:
+The reload uses **all-or-nothing semantics** via Caddy's `POST /load`:
 
-- Each route is processed independently
-- If a route deletion or creation fails, the error is collected and processing
-  continues with the next route
-- At the end, all failures are reported
-- If any route failed, the process exits with code 1
-
-This means a partial reload is possible -- some routes may be updated while
-others remain in their previous state (or temporarily missing if deletion
-succeeded but creation failed).
+- If the new configuration is valid, all routes are applied simultaneously.
+  There is no window where some routes exist and others do not.
+- If `POST /load` fails, Caddy automatically rolls back to the previous
+  configuration. No routes are changed.
+- Caddy applies configuration changes without dropping in-flight connections,
+  ensuring zero downtime during the reload.
 
 ### When to use reload
 
@@ -119,7 +118,9 @@ succeeded but creation failed).
 
 Caddy stores its configuration **in memory** by default. The `fleet-proxy`
 container runs with `caddy run --resume`, which tells Caddy to resume from its
-last persisted configuration on startup. Caddy persists configuration to disk
+last persisted configuration on startup (see
+[Proxy Docker Compose Configuration](../caddy-proxy/proxy-compose.md) for how
+the `--resume` flag is configured). Caddy persists configuration to disk
 automatically after changes made through the admin API. However, if the container
 is forcefully killed before persistence completes, routes may be lost.
 
@@ -212,3 +213,9 @@ Check Caddy logs (`docker logs fleet-proxy`) for details. Common causes:
   automatically
 - [Stack Lifecycle](../stack-lifecycle/overview.md) -- stop and teardown also
   affect routes
+- [Proxy Docker Compose Configuration](../caddy-proxy/proxy-compose.md) -- the
+  generated Caddy compose file and `--resume` flag
+- [State Management Overview](../state-management/overview.md) -- how route
+  information is stored in state.json
+- [Deployment Troubleshooting](../deploy/troubleshooting.md) -- diagnosing
+  ghost routes and missing routes after deployment

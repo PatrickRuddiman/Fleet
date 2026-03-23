@@ -99,7 +99,7 @@ non-interactive environment (piped stdin, CI pipeline), the prompt will:
 For CI/CD usage, ensure the directory name can be slugified successfully, or
 provide a pre-configured `fleet.yml` rather than running `fleet init`.
 
-## Related Documentation
+## Related documentation
 
 - [Project Initialization Overview](overview.md) -- how utilities fit into the
   init workflow
@@ -115,5 +115,7 @@ provide a pre-configured `fleet.yml` rather than running `fleet init`.
   behavior including the prompt
 - [Fleet Configuration Checks](../validation/fleet-checks.md) -- how
   `STACK_NAME_REGEX` is used in validation
+- [Configuration Loading and Validation](../configuration/loading-and-validation.md)
+  -- how the generated `fleet.yml` is subsequently loaded and validated
 - [Validation Codes](../validation/validation-codes.md) -- `INVALID_STACK_NAME`
   error code details

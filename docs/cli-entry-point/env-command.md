@@ -126,6 +126,9 @@ server to:
 
 ## Troubleshooting
 
+For a comprehensive list of env-related failure modes and recovery procedures,
+see [Env Secrets Troubleshooting](../env-secrets/troubleshooting.md).
+
 ### "Env push failed with an unknown error"
 
 Check SSH connectivity and ensure the `server` section in `fleet.yml` is
@@ -160,3 +163,9 @@ to pick up the new values. Use [`fleet restart`](../stack-lifecycle/restart.md) 
   when both entries and infisical are configured
 - [SSH Connection Layer](../ssh-connection/overview.md) -- how remote commands
   are executed
+- [Env Secrets Troubleshooting](../env-secrets/troubleshooting.md) -- failure
+  modes and recovery procedures for secrets resolution
+- [Security Model](../env-secrets/security-model.md) -- file permissions and
+  path traversal protection for `.env` files
+- [State Lifecycle](../state-management/state-lifecycle.md) -- how `fleet env`
+  interacts with server state

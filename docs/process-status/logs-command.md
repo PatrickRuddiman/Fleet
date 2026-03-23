@@ -2,7 +2,7 @@
 
 The `fleet logs` command streams real-time log output from Docker Compose
 services running on a remote server. It is the equivalent of running
-`docker compose logs -f` over an SSH connection.
+`docker compose logs -f` over an [SSH connection](../ssh-connection/overview.md).
 
 ## Usage
 
@@ -117,5 +117,9 @@ configuration schema, ensuring it is a valid Docker Compose project name.
   state is read and validated
 - [Configuration loading](../configuration/loading-and-validation.md) -- how
   `fleet.yml` is loaded
+- [Configuration schema reference](../configuration/schema-reference.md) -- the
+  stack name validation and server configuration fields
+- [Operational CLI Commands](../cli-commands/operational-commands.md) -- full
+  reference for all operational commands including `fleet logs`
 - [Stack lifecycle](../stack-lifecycle/overview.md) -- restart, stop, and
   teardown operations

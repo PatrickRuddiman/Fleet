@@ -7,9 +7,11 @@ outputs an annotated YAML document ready for editing.
 
 ## Why This Exists
 
-Setting up a Fleet project manually requires understanding the schema, knowing which
+Setting up a Fleet project manually requires understanding the
+[schema](../configuration/schema-reference.md), knowing which
 compose services need routes, and correctly mapping container ports to public domains.
-The `fleet init` command automates this scaffolding step so that teams can go from an
+The [`fleet init`](../cli-entry-point/init-command.md) command automates this
+scaffolding step so that teams can go from an
 existing Docker Compose setup to a deployable Fleet configuration in seconds.
 
 ## Module Structure

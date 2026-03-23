@@ -32,8 +32,8 @@ docker exec fleet-proxy curl -s -f http://localhost:2019/config/
 # List all routes
 docker exec fleet-proxy curl -s -f http://localhost:2019/config/apps/http/servers/fleet/routes | jq .
 
-# Get a specific route by ID
-docker exec fleet-proxy curl -s -f http://localhost:2019/id/mystack__web | jq .
+# Get a specific route by ID (format: stackname__domain-slug)
+docker exec fleet-proxy curl -s -f http://localhost:2019/id/mystack__app-example-com | jq .
 ```
 
 ### Check TLS Certificates
@@ -67,7 +67,9 @@ docker exec fleet-proxy curl -s http://mystack-web-1:3000/
 ### 1. Admin API Not Responding
 
 **Symptoms:** `fleet deploy` or `fleet proxy reload` fails with
-"Failed to bootstrap Caddy" or connection refused errors.
+"Failed to bootstrap Caddy" or connection refused errors. See also
+[Deploy Troubleshooting](../deploy/troubleshooting.md) for deploy-specific
+error diagnosis.
 
 **Cause:** Caddy container is not running or has not finished starting.
 
@@ -132,8 +134,8 @@ failed, or `state.json` was manually edited.
 **Resolution:**
 
 ```bash
-# Remove the ghost route by its Caddy ID
-docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/stackname__servicename
+# Remove the ghost route by its Caddy ID (format: stackname__domain-slug)
+docker exec fleet-proxy curl -s -f -X DELETE http://localhost:2019/id/myapp__old-example-com
 
 # Or reload all routes from state
 fleet proxy reload
@@ -146,7 +148,7 @@ shows "Missing routes" warnings. Traffic to
 the affected domain returns 502 or connection refused.
 
 **Cause:** Caddy was restarted without the `--resume` flag, the config volume
-was lost, or a route deletion succeeded but the re-add failed.
+was lost, or a `POST /load` reload failed partway through.
 
 **Resolution:**
 
@@ -155,8 +157,10 @@ was lost, or a route deletion succeeded but the re-add failed.
 fleet proxy reload
 ```
 
-This deletes and re-adds every route defined in `state.json`, converging live
-Caddy config with the desired state.
+This rebuilds all routes from `state.json`, fetches the current Caddy config,
+merges the routes in, and posts the full configuration atomically via
+`POST /load`. See [Route Reload](../proxy-status-reload/route-reload.md) for
+the full reload mechanism.
 
 ### 5. TLS Certificate Not Provisioning
 
@@ -223,7 +227,8 @@ proxy.
 **Impact:** `POST /load` replaces the entire Caddy config with an empty routes
 array, wiping all existing routes.
 
-**Prevention:** Fleet checks `caddy_bootstrapped` in state before running
+**Prevention:** Fleet checks `caddy_bootstrapped` in
+[state](../state-management/overview.md) before running
 bootstrap. If state is corrupted, fix it before deploying:
 
 ```bash
@@ -252,7 +257,9 @@ fleet deploy
 ```
 
 After the deploy, all routes are re-registered from `fleet.yml` config. New
-TLS certificates are provisioned automatically.
+TLS certificates are provisioned automatically. See the
+[Fleet Root Directory Layout](../fleet-root/directory-layout.md) for where
+proxy files are stored on the server.
 
 ### Config Volume Loss Recovery
 
@@ -304,7 +311,7 @@ Caddy logs in structured JSON format by default. Key fields to look for:
 - `logger: tls.obtain` -- Certificate provisioning events.
 - `logger: tls.renew` -- Certificate renewal events.
 
-## Related Documentation
+## Related documentation
 
 - [Architecture Overview](./overview.md) -- System design context
 - [Caddy Admin API](./caddy-admin-api.md) -- API endpoint details
@@ -324,3 +331,9 @@ Caddy logs in structured JSON format by default. Key fields to look for:
   routes are registered during deploy
 - [State Management Overview](../state-management/overview.md) -- Understanding
   the state file that drives route reconciliation
+- [State Operations Guide](../state-management/operations-guide.md) -- How to
+  inspect, back up, and recover state
+- [SSH Connection Overview](../ssh-connection/overview.md) -- SSH connection
+  layer used for all remote Caddy commands
+- [Fleet Root Directory Layout](../fleet-root/directory-layout.md) -- Where
+  proxy files live on the server

@@ -2,7 +2,9 @@
 
 The `fleet init` command scaffolds a new `fleet.yml` configuration file for an
 existing Docker Compose project. It examines the compose file to infer routing
-information and generates a configuration template ready for customization.
+information and generates a configuration template ready for customization. After
+generating the file, run [`fleet validate`](../validation/validate-command.md)
+to verify the configuration before deploying.
 
 ## Usage
 
@@ -157,5 +159,9 @@ Remember to run `fleet validate` after editing fleet.yml.
   stack name constraints and route schema
 - [Docker Compose Parsing](../compose/overview.md) -- how compose files are
   parsed and queried
+- [Compose Parser Internals](../compose/parser.md) -- detailed port
+  normalization and service extraction logic
 - [Project Init Integrations](../project-init/integrations.md) -- how the
   init module integrates with other Fleet subsystems
+- [Operational Commands](../cli-commands/operational-commands.md) -- runtime
+  commands available after deployment

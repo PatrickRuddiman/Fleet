@@ -84,8 +84,10 @@ a set-difference operation between two hostname lists:
 
 This produces:
 
-- **Ghost routes**: Hostnames present in Caddy but not in `state.json`
-- **Missing routes**: Hostnames present in `state.json` but not in Caddy
+- **Ghost routes**: Hostnames present in Caddy but not in `state.json` (see
+  [ghost routes](#what-is-a-ghost-route) below)
+- **Missing routes**: Hostnames present in `state.json` but not in Caddy (see
+  [missing routes](#what-is-a-missing-route) below)
 
 ### Step 5: Format and print output
 
@@ -113,8 +115,8 @@ Run `fleet proxy reload` to reconcile.
 A ghost route is a hostname that exists in the live Caddy configuration but has
 no corresponding entry in `state.json`. Ghost routes occur when:
 
-- A stack was torn down (`fleet teardown`) but Caddy route cleanup failed or
-    was interrupted.
+- A stack was torn down ([`fleet teardown`](../stack-lifecycle/teardown.md)) but
+    Caddy route cleanup failed or was interrupted.
 - Someone manually added a route via the Caddy Admin API.
 - A previous deploy added a route, then the state file was corrupted or
     manually edited to remove it.
@@ -135,7 +137,8 @@ corresponding entry in the live Caddy configuration. Missing routes mean
 **traffic for that hostname is not being proxied**. They occur when:
 
 - The Caddy container was restarted and `caddy run --resume` failed to restore
-    the configuration (possibly due to corrupted Caddy config storage).
+    the configuration (see [Proxy Compose](../caddy-proxy/proxy-compose.md)
+    for `--resume` behavior; possibly due to corrupted Caddy config storage).
 - A deploy recorded the route in state but the Caddy API call to add it failed.
 - Someone manually deleted a route via the Caddy Admin API.
 
@@ -190,5 +193,7 @@ Defined in `src/proxy-status/types.ts`:
   stores expected route information
 - [Deploy Caddy Route Management](../deploy/caddy-route-management.md) -- how
   routes are registered during deployment
+- [Deployment Troubleshooting](../deploy/troubleshooting.md) -- ghost and
+  missing route diagnosis during deployment
 - [Stack Lifecycle Teardown](../stack-lifecycle/teardown.md) -- how teardown
   removes routes (potential source of ghost routes)

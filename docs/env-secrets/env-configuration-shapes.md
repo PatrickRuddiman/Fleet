@@ -5,7 +5,7 @@
 The `env` field in `fleet.yml` accepts three mutually exclusive shapes,
 implemented as a Zod union type at `src/config/schema.ts:57`. Each shape
 triggers a different code path in `resolveSecrets()` at
-`src/deploy/helpers.ts:198-287`. This page documents each shape, how it is
+`src/deploy/helpers.ts:211-299`. This page documents each shape, how it is
 parsed, what upload mechanism it uses, and the validation rules that apply.
 
 ## Why Three Shapes Exist
@@ -17,8 +17,7 @@ Different deployment contexts have different requirements:
 - **File reference**: CI/CD pipelines that generate `.env` files as build
   artifacts, or teams that manage `.env` files separately from Fleet config.
 - **Infisical object**: Teams using centralized secrets management who want
-  secrets fetched directly on the server without passing through the operator's
-  machine.
+  secrets fetched from the Infisical API without storing them locally.
 
 ## Configuration Shape Decision Tree
 
@@ -26,24 +25,23 @@ Different deployment contexts have different requirements:
 flowchart TD
     START{"env field present<br/>in fleet.yml?"} -- No --> NONE["No .env file created"]
     START -- Yes --> PARSE{"What shape?"}
-    
+
     PARSE -- "Array" --> ARRAY["Array of { key, value }"]
     PARSE -- 'Has "file" key' --> FILE["{ file: string }"]
     PARSE -- 'Has "entries" or "infisical"' --> OBJECT["{ entries?, infisical? }"]
-    
-    ARRAY --> HEREDOC["Upload via heredoc"]
-    FILE --> B64["Upload via base64"]
+
+    ARRAY --> HEREDOC["Upload via heredoc<br/>chmod 0600"]
+    FILE --> B64["Read local file<br/>Upload via base64<br/>chmod 0600"]
     OBJECT --> HAS_ENTRIES{"Has entries?"}
     HAS_ENTRIES -- Yes --> WRITE_ENTRIES["Write entries via heredoc"]
     HAS_ENTRIES -- No --> CHECK_INF
     WRITE_ENTRIES --> CHECK_INF{"Has infisical?"}
-    CHECK_INF -- Yes --> EXPORT["infisical export > .env<br/>(OVERWRITES entries)"]
+    CHECK_INF -- Yes --> SDK_FETCH["SDK: listSecrets()<br/>Format KEY=VALUE<br/>Upload via base64<br/>(OVERWRITES entries)"]
     CHECK_INF -- No --> DONE["Done"]
-    EXPORT --> CHMOD["chmod 0600"]
-    
+    SDK_FETCH --> DONE
+
     HEREDOC --> DONE
     B64 --> DONE
-    CHMOD --> DONE
 ```
 
 ## Shape 1: Inline Key-Value Array
@@ -79,11 +77,10 @@ Source: `src/config/schema.ts:10-13`
 1. Each entry is formatted as `KEY=VALUE`
 2. Lines are joined with newlines, plus a trailing newline
 3. The content is uploaded using the **heredoc** method (`uploadFile` at
-   `src/deploy/helpers.ts:140-162`, documented in
-   [Atomic File Uploads](../deploy/file-upload.md))
+   `src/deploy/helpers.ts:142-175`)
 4. Permissions are set to `0600`
 
-Source: `src/deploy/helpers.ts:238-252`
+Source: `src/deploy/helpers.ts:252-264`
 
 ### When to use
 
@@ -125,22 +122,20 @@ Defined by `envFileSchema` at `src/config/schema.ts:15-17`:
 
 1. The file path is resolved relative to the `fleet.yml` directory
 2. **Path traversal protection**: The resolved path is checked to ensure it
-   stays within the project directory (`src/deploy/helpers.ts:216-219`).
+   stays within the project directory (`src/deploy/helpers.ts:229-232`).
    Paths like `../../etc/passwd` are rejected.
 3. The file content is read from the local filesystem
 4. Content is **base64-encoded**, transmitted over SSH, decoded on the remote
-   server, and written to `{stackDir}/.env` (see
-   [Atomic File Uploads](../deploy/file-upload.md) for details on the base64
-   upload method)
+   server, and written to `{stackDir}/.env`
 5. Permissions are set to `0600`
 
-Source: `src/deploy/helpers.ts:208-236`
+Source: `src/deploy/helpers.ts:222-248`
 
 ### Why base64 instead of heredoc
 
-The file upload strategy (Shape 2) uses `uploadFileBase64` while the inline
-entries strategy (Shape 1) uses `uploadFile` with heredoc. The reason is
-documented at `src/deploy/helpers.ts:164-168`:
+The file upload strategy uses `uploadFileBase64` while the inline entries
+strategy uses `uploadFile` with heredoc. The reason is documented at
+`src/deploy/helpers.ts:177-181`:
 
 > Uses base64 encoding over SSH exec. This avoids heredoc delimiter and shell
 > metacharacter issues with arbitrary file content.
@@ -161,20 +156,20 @@ exec channel.
 ### Path traversal example
 
 ```yaml
-# Allowed — resolves within the project directory
+# Allowed -- resolves within the project directory
 env:
   file: .env.production
 
-# Allowed — subdirectory
+# Allowed -- subdirectory
 env:
   file: config/.env.staging
 
-# REJECTED — escapes the project directory
+# REJECTED -- escapes the project directory
 env:
   file: ../../etc/passwd
 ```
 
-The check at `src/deploy/helpers.ts:216-219` verifies:
+The check at `src/deploy/helpers.ts:229-232` verifies:
 
 ```typescript
 if (!envFilePath.startsWith(configDir + path.sep) && envFilePath !== configDir) {
@@ -182,10 +177,13 @@ if (!envFilePath.startsWith(configDir + path.sep) && envFilePath !== configDir) 
 }
 ```
 
+See [Security Model](./security-model.md) for a detailed analysis of the path
+traversal protection, including edge cases.
+
 ## Shape 3: Object with Entries and/or Infisical
 
 The most flexible form, allowing optional inline entries combined with optional
-Infisical secret fetching.
+Infisical secret fetching via the Node.js SDK.
 
 ### Configuration (entries only)
 
@@ -209,7 +207,7 @@ env:
     path: /
 ```
 
-### Configuration (both — produces validation error)
+### Configuration (both -- produces validation error)
 
 ```yaml
 # WARNING: This triggers ENV_CONFLICT validation error
@@ -239,21 +237,25 @@ Defined by `envSchema` at `src/config/schema.ts:26-29`:
 
 1. If `entries` is present and non-empty, they are formatted as `KEY=VALUE`
    lines and uploaded via heredoc to `{stackDir}/.env`
-2. If `infisical` is present, the Infisical CLI runs on the remote server:
-   ```bash
-   INFISICAL_TOKEN={token} infisical export \
-       --projectId={project_id} --env={environment} \
-       --path={path} --format=dotenv > {stackDir}/.env
-   ```
-3. The `>` redirect **overwrites** the `.env` file — if both entries and
+   (`src/deploy/helpers.ts:268-276`)
+2. If `infisical` is present, Fleet uses the **Infisical Node.js SDK** to
+   fetch secrets:
+    - Instantiates `InfisicalSDK` and authenticates with the access token
+      (`src/deploy/helpers.ts:282-283`)
+    - Calls `client.secrets().listSecrets()` with the configured project ID,
+      environment, and secret path (`src/deploy/helpers.ts:285-289`)
+    - Formats the returned secrets as `KEY=VALUE` lines
+      (`src/deploy/helpers.ts:291`)
+    - Uploads the result via `uploadFileBase64()` with `0600` permissions
+      (`src/deploy/helpers.ts:293-297`)
+3. The base64 upload **overwrites** the `.env` file -- if both entries and
    Infisical are configured, the entries are lost
-
-Source: `src/deploy/helpers.ts:254-286`
 
 ### The entries + infisical conflict
 
-The validation module at `src/validation/fleet-checks.ts:4-25` detects when
-both `entries` (non-empty) and `infisical` are configured and reports:
+The validation module at `src/validation/fleet-checks.ts:10-20` detects when
+both `entries` (non-empty) and `infisical` are configured and reports an
+[`ENV_CONFLICT`](../validation/validation-codes.md#env_conflict) error:
 
 > **Error (ENV_CONFLICT)**: "env.entries" and "env.infisical" are both
 > configured, but "env.infisical" will overwrite the ".env" file produced
@@ -269,14 +271,14 @@ project or manage a combined `.env` file using the file reference shape.
   (useful if you plan to add Infisical later)
 - **Infisical only**: Centralized secrets management where all variables come
   from Infisical
-- **Neither**: Not useful — use `configHasSecrets()` to check if any env
+- **Neither**: Not useful -- use `configHasSecrets()` to check if any env
   source is present
 
 ## How Docker Compose Consumes the `.env` File
 
 The `.env` file written by any of the three strategies is consumed by Docker
 Compose via the `--env-file` flag. The `configHasSecrets()` function at
-`src/deploy/helpers.ts:409-423` determines whether this flag is needed:
+`src/deploy/helpers.ts:451-465` determines whether this flag is needed:
 
 ```typescript
 if (!config.env) return false;
@@ -321,19 +323,24 @@ if (config.env.infisical) { ... }
 
 This pattern appears in:
 
-- `src/deploy/helpers.ts:204-286` (resolveSecrets)
-- `src/env/env.ts:45` (Infisical bootstrap check)
-- `src/deploy/helpers.ts:409-423` (configHasSecrets)
-- `src/config/loader.ts:30-33` (`$VAR` expansion)
-- `src/validation/fleet-checks.ts:4-25` (conflict detection)
+- `src/deploy/helpers.ts:222-298` (resolveSecrets)
+- `src/deploy/helpers.ts:451-465` (configHasSecrets)
+- `src/config/loader.ts:30-34` (`$VAR` expansion)
+- `src/validation/fleet-checks.ts:10-20` (conflict detection)
 
-## Related Documentation
+## Related documentation
 
 - [Environment and Secrets Overview](./overview.md) -- the complete `fleet env`
   workflow
 - [Infisical Integration](./infisical-integration.md) -- deep dive on the
-  Infisical secret source
+  Infisical SDK, token types, and operational guidance
+- [Security Model](./security-model.md) -- file permissions, path traversal,
+  and transport security
 - [Troubleshooting](./troubleshooting.md) -- failure modes and recovery
+- [State Data Model](./state-data-model.md) -- how `env_hash` tracks changes
+  to the `.env` file for change detection
+- [Configuration Loading and Validation](../configuration/loading-and-validation.md)
+  -- how the `env` field is parsed and `$VAR` references are expanded
 - [Configuration Schema Reference](../configuration/schema-reference.md) --
   full field-by-field specification
 - [Configuration Environment Variables](../configuration/environment-variables.md) --
@@ -344,5 +351,3 @@ This pattern appears in:
   selection and `.env` file creation
 - [Atomic File Uploads](../deploy/file-upload.md) -- heredoc and base64 upload
   mechanisms used by the env strategies
-- [Validation Troubleshooting](../validation/troubleshooting.md) -- resolving
-  `ENV_CONFLICT` and other validation errors

@@ -14,7 +14,8 @@ Docker Compose port syntax has four distinct shapes, restart policies interact
 with YAML boolean coercion rules, and the full Compose specification contains
 dozens of fields Fleet does not need. The parser encapsulates all of this
 complexity so that every other module in Fleet can work with clean, normalized
-data.
+data. For how the parsed output is validated, see
+[Compose Configuration Checks](../validation/compose-checks.md).
 
 ## How
 
@@ -146,5 +147,7 @@ include `restart: no`, which must remain the string `"no"` for
   to parsed compose output
 - [Configuration Loading](../configuration/loading-and-validation.md) -- config
   loading pipeline that works alongside compose parsing
+- [Configuration Integrations](../configuration/integrations.md) -- YAML library
+  details shared between compose and config parsing
 - [Validation Troubleshooting](../validation/troubleshooting.md) -- resolving
   validation errors raised against parsed compose output

@@ -63,7 +63,7 @@ sequenceDiagram
 
 ### Which Fields Are Included
 
-The definition hash covers exactly **10 fields** from `ParsedService`, defined as
+The definition hash covers exactly **10 fields** from [`ParsedService`](../compose/types.md#parsedservice), defined as
 the `INCLUDED_FIELDS` constant at `src/deploy/hashes.ts:70-81`:
 
 | Field | Type | Why Included |
@@ -308,7 +308,7 @@ For deployment environments that require FIPS compliance, use a FIPS-enabled
 Node.js build (available from vendors like Red Hat) or configure OpenSSL FIPS
 mode on the machine running the Fleet CLI.
 
-## Related Documentation
+## Related documentation
 
 - [Service Classification and Hashing Overview](service-classification-and-hashing.md)
 - [Classification Decision Tree](classification-decision-tree.md) -- Consumes
@@ -326,3 +326,7 @@ mode on the machine running the Fleet CLI.
   that triggers hash computation
 - [Environment and Secrets](../env-secrets/overview.md) -- How `.env` files
   are produced before hashing
+- [Deploy Sequence](deploy-sequence.md) -- the 17-step pipeline
+  where hash computation runs as part of Steps 8-10
+- [Compose Type Definitions](../compose/types.md) -- the `ParsedService`
+  interface whose fields are hashed

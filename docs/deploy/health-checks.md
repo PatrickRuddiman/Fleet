@@ -8,8 +8,9 @@ to configure it, and what happens when checks fail.
 
 ## Why Health Checks Exist
 
-After starting containers (Step 12) and before registering Caddy routes
-(Step 15), Fleet verifies that services are actually responding to HTTP requests.
+After starting containers (Step 12) and before writing
+[server state](../state-management/overview.md) (Step 16), Fleet verifies that
+services are actually responding to HTTP requests.
 This catches common deployment issues:
 
 - Application fails to start due to missing configuration
@@ -19,7 +20,7 @@ This catches common deployment issues:
 
 ## How It Works
 
-The `checkHealth()` function at `src/deploy/helpers.ts:321-356` polls a health
+The `checkHealth()` function at `src/deploy/helpers.ts:333-368` polls a health
 endpoint by running `curl` *inside* the target container via `docker exec`:
 
 ```bash
@@ -53,8 +54,8 @@ server via SSH.
 ### Timeout Behavior
 
 **On timeout, a warning is added rather than failing the deploy.** The
-deployment continues to route registration (Step 15), state write (Step 16), and
-summary (Step 17). The warning appears in the final summary output.
+deployment continues to state write (Step 16) and summary (Step 17). The
+warning appears in the final summary output.
 
 This design choice means a service can be deployed and made reachable via Caddy
 even if its health check does not pass. This is intentional -- some services may
@@ -63,7 +64,9 @@ not be available until after initial data loading.
 
 ## Configuration
 
-Health checks are configured per-route in [`fleet.yml`](../configuration/overview.md):
+Health checks are configured per-route in [`fleet.yml`](../configuration/overview.md)
+(see [Schema Reference](../configuration/schema-reference.md#health_check) for
+field-by-field details):
 
 ```yaml
 routes:
@@ -87,8 +90,9 @@ check is performed for that route's service.
 
 ## The --no-health-check Flag
 
-Passing `--no-health-check` to `fleet deploy` skips all health checks entirely.
-Step 14 prints a message and proceeds directly to Step 15 (route registration).
+Passing `--no-health-check` to [`fleet deploy`](../cli-entry-point/deploy-command.md)
+skips all health checks entirely.
+Step 15 prints a message and proceeds directly to Step 16 (state write).
 
 Use this flag when:
 
@@ -132,14 +136,16 @@ container. The application must:
 | `last status: HTTP 500` | Application is running but returning an error |
 | `last status: HTTP 503` | Application is starting up (service unavailable) |
 
-## Related Pages
+## Related documentation
 
-- [17-Step Deploy Sequence](deploy-sequence.md) -- health checks run at Step 14
+- [17-Step Deploy Sequence](deploy-sequence.md) -- health checks run at Step 15
 - [Troubleshooting](troubleshooting.md) -- diagnosing health check failures
 - [Deployment Pipeline Overview](../deployment-pipeline.md)
 - [Configuration Schema Reference](../configuration/schema-reference.md) --
   `health_check` field specification
-- [Caddy Route Management](caddy-route-management.md) -- Step 15, which
-  runs after health checks pass
+- [Caddy Route Management](caddy-route-management.md) -- Step 14, which
+  runs before health checks
+- [SSH Connection API](../ssh-connection/connection-api.md) -- the `ExecFn`
+  interface used for remote `curl` execution
 - [Validation Overview](../validation/overview.md) -- pre-deploy checks that
   run before health checks

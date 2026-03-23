@@ -154,8 +154,8 @@ JavaScript's `Error` class. Check the deployment logs and SSH connectivity.
 
 ### SSH connection failures
 
-Verify the `server` section in `fleet.yml`. Ensure the host is reachable, the
-SSH port is correct, and the identity file (if specified) has correct permissions
+Verify the `server` section in [`fleet.yml`](../configuration/overview.md). Ensure the host is reachable, the
+SSH port is correct, and the [identity file](../ssh-connection/authentication.md) (if specified) has correct permissions
 (`chmod 600`).
 
 ### Service not classified correctly
@@ -184,3 +184,9 @@ the full decision tree.
   CI/CD workflows
 - [Validation](../validation/validate-command.md) -- pre-flight checks before
   deploying
+- [Deploy Failure Recovery](../deploy/failure-recovery.md) -- recovering from
+  deployment failures and partial deploys
+- [Validate Command](../validation/validate-command.md) -- standalone
+  pre-flight validation checks
+- [Environment and Secrets](../env-secrets/overview.md) -- how environment
+  files and secrets are resolved during deployment

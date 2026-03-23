@@ -70,7 +70,7 @@ files across 12 modules depend on its exports:
 - [Deployment Pipeline](../deployment-pipeline.md) — `createConnection`, `Connection`, `ExecFn`
 - [Server Bootstrap](../bootstrap/server-bootstrap.md) — `ExecFn`
 - [State Management](../state-management/overview.md) — `ExecFn`, `ExecResult` (re-exported through `state/types.ts`)
-- [Stack Lifecycle](../stack-lifecycle/README.md) — `createConnection`, `Connection`, `ExecFn`
+- [Stack Lifecycle](../stack-lifecycle/overview.md) — `createConnection`, `Connection`, `ExecFn`
 - [Process Status](../process-status/overview.md) — `createConnection`, `Connection`
 - [Proxy Status and Reload](../proxy-status-reload/overview.md) — `createConnection`, `Connection`, `ExecFn`
 - [Environment and Secrets](../env-secrets/overview.md) — `createConnection`, `Connection`
@@ -95,7 +95,7 @@ for the full `ServerConfig` type definition and the
 [Configuration Schema Reference](../configuration/schema-reference.md) for
 field-by-field details.
 
-## Further Reading
+## Related documentation
 
 - [Authentication and SSH Agent](./authentication.md) — How SSH authentication
   works, SSH agent setup, and troubleshooting connection failures
@@ -105,5 +105,15 @@ field-by-field details.
   cleanup patterns, and known limitations
 - [Fleet Root Overview](../fleet-root/overview.md) — How the fleet root
   module uses `ExecFn` for directory resolution
+- [Fleet Root Resolution Flow](../fleet-root/resolution-flow.md) — Step-by-step
+  resolution logic executed via SSH
 - [State Operations Guide](../state-management/operations-guide.md) — How to
   inspect, back up, and recover state via SSH
+- [Bootstrap Integrations](../bootstrap/bootstrap-integrations.md) — How SSH
+  is used during bootstrap for Docker and Caddy commands
+- [Deploy Sequence](../deploy/deploy-sequence.md) — The 17-step deploy
+  pipeline that relies on SSH for all remote operations
+- [Configuration Schema Reference](../configuration/schema-reference.md) —
+  The `server` section that configures SSH connections
+- [Stack Lifecycle Overview](../stack-lifecycle/overview.md) — Stop, restart,
+  and teardown operations that use SSH

@@ -1,11 +1,11 @@
 # Teardown Operation
 
 The `fleet teardown` command is the most destructive lifecycle operation. It
-removes Caddy reverse proxy routes, destroys containers and networks via
-`docker compose down`, and removes the stack from Fleet's state file. With the
-optional `--volumes` flag, it also deletes all persistent Docker volumes,
-permanently destroying database data, uploaded files, and any other
-volume-backed storage.
+removes [Caddy reverse proxy](../caddy-proxy/overview.md) routes, destroys
+containers and networks via `docker compose down`, and removes the stack from
+Fleet's [state file](../state-management/overview.md). With the optional
+`--volumes` flag, it also deletes all persistent Docker volumes, permanently
+destroying database data, uploaded files, and any other volume-backed storage.
 
 ## What it does
 
@@ -170,10 +170,10 @@ the shared network would break routing for all other deployed stacks.
 
 ## When NOT to use teardown
 
-- You want a quick service recovery -- use `fleet restart`
+- You want a quick service recovery -- use [`fleet restart`](./restart.md)
 - You want to temporarily halt the stack but keep data for quick recovery --
-  use `fleet stop`
-- You only want to restart a single service -- use `fleet restart`
+  use [`fleet stop`](./stop.md)
+- You only want to restart a single service -- use [`fleet restart`](./restart.md)
 
 ## Related documentation
 
@@ -187,6 +187,8 @@ the shared network would break routing for all other deployed stacks.
   deletion endpoint details
 - [Caddy Reverse Proxy Troubleshooting](../caddy-proxy/troubleshooting.md) --
   debugging route removal failures
+- [Deployment Troubleshooting](../deploy/troubleshooting.md) -- includes ghost
+  route handling and state recovery after interrupted operations
 - [Proxy Status Command](../proxy-status-reload/proxy-status.md) -- detecting
   ghost routes after failed teardown
 - [Server State Management](../state-management/overview.md) -- how state is

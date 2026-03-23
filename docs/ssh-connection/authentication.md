@@ -8,7 +8,7 @@ to diagnose connection failures.
 
 ### Method 1: Private key file (`identity_file`)
 
-When `identity_file` is set in `fleet.yml`, Fleet reads the private key from
+When `identity_file` is set in [`fleet.yml`](../configuration/overview.md), Fleet reads the private key from
 that path and passes it to the `node-ssh` library as `privateKeyPath`.
 
 ```yaml
@@ -196,7 +196,7 @@ around the `ssh2` library. Key characteristics:
   `compress`, `algorithms`, and `hostVerifier` — none of which Fleet
   currently exposes
 
-## Related Pages
+## Related documentation
 
 - [Overview](./overview.md) — Architecture of the SSH connection layer
 - [Connection API](./connection-api.md) — The `Connection` interface reference
@@ -210,3 +210,9 @@ around the `ssh2` library. Key characteristics:
   SSH usage within the deployment pipeline
 - [Fleet Root Troubleshooting](../fleet-root/troubleshooting.md) — How SSH user
   permissions affect fleet root resolution
+- [Environment Secrets Troubleshooting](../env-secrets/troubleshooting.md) — SSH
+  connection failures during `fleet env` operations
+- [Stack Lifecycle Failure Modes](../stack-lifecycle/failure-modes.md) — How SSH
+  failures affect stop, restart, and teardown operations
+- [Configuration Overview](../configuration/overview.md) — How the `server`
+  section of `fleet.yml` drives SSH connection parameters

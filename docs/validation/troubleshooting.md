@@ -227,12 +227,15 @@ If `fleet validate` produces no errors but `fleet deploy` still fails, the
 issue is likely:
 
 1. **Network or SSH connectivity** --- Validation runs locally and does not
-   test the SSH connection.
+   test the SSH connection. See
+   [SSH Authentication](../ssh-connection/authentication.md) for connection
+   troubleshooting.
 2. **Docker daemon issues on the server** --- Validation does not check the
    remote Docker installation.
 3. **Cross-stack host collisions** --- Validation only checks within the
-   current `fleet.yml`. The deployment pipeline checks for domain conflicts
-   across all deployed stacks using the server state file.
+   current `fleet.yml`. The [deployment pipeline](../deploy/deploy-sequence.md)
+   checks for domain conflicts across all deployed stacks using the server
+   state file.
 4. **Image pull failures** --- Validation does not verify that images are
    accessible from the remote server.
 5. **Infisical token issues** --- Environment variable expansion (`$VAR`
@@ -254,7 +257,7 @@ To add a new check:
 All check functions follow the same signature: accept `FleetConfig` and/or
 `ParsedComposeFile`, return `Finding[]`.
 
-## Related pages
+## Related documentation
 
 - [Validation Overview](./overview.md)
 - [Validation Codes Reference](./validation-codes.md)
@@ -272,3 +275,9 @@ All check functions follow the same signature: accept `FleetConfig` and/or
   port conflicts relate to Caddy proxy routing
 - [Project Initialization Overview](../project-init/overview.md) -- how
   `fleet init` generates an initial fleet.yml
+- [CLI Entry Point Troubleshooting](../cli-entry-point/troubleshooting.md) --
+  CLI-level errors that may surface before validation runs
+- [Process Status Troubleshooting](../process-status/troubleshooting.md) --
+  diagnosing `fleet ps` and `fleet logs` issues
+- [Deployment Troubleshooting](../deploy/troubleshooting.md) -- deployment
+  failures that occur after validation passes

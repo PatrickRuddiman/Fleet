@@ -70,7 +70,7 @@ flowchart TD
 
 ### 1. Configuration not found or invalid
 
-**When:** Step 1 -- `loadFleetConfig()` cannot find `fleet.yml` or the file
+**When:** Step 1 -- [`loadFleetConfig()`](../configuration/overview.md) cannot find `fleet.yml` or the file
 fails Zod schema validation.
 
 **Side effects at failure:** None. No SSH connection has been opened, no remote
@@ -497,3 +497,9 @@ ssh <server> "docker compose version"
   authentication, and error handling
 - [Proxy Status and Route Reload](../proxy-status-reload/) -- tools for
   inspecting and reconciling Caddy routes
+- [Configuration Overview](../configuration/overview.md) -- how `fleet.yml` is
+  loaded and validated before lifecycle operations
+- [Validation Overview](../validation/overview.md) -- pre-flight checks that
+  can prevent some failure modes
+- [Process Status Troubleshooting](../process-status/troubleshooting.md) --
+  diagnostic commands for inspecting container and service status

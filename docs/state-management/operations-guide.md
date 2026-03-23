@@ -56,7 +56,8 @@ fleet ps my-app       # Show a specific stack
 
 ### Before destructive operations
 
-Before running `fleet teardown` or `fleet stop`, back up the state file:
+Before running [`fleet teardown`](../stack-lifecycle/teardown.md) or
+[`fleet stop`](../stack-lifecycle/stop.md), back up the state file:
 
 ```bash
 ssh user@server "cp ~/.fleet/state.json ~/.fleet/state.json.backup"
@@ -276,6 +277,37 @@ The state file path (`~/.fleet/state.json`) is hardcoded. The `~` is expanded
 by the remote shell to the SSH user's home directory. There is no
 configuration option to change this path.
 
+### Directory permissions
+
+The `~/.fleet/` directory is created with `mkdir -p` (see
+`src/state/state.ts:80`), which inherits the default `umask` of the SSH user's
+session -- typically `0022`, resulting in `drwxr-xr-x` (755) permissions.
+No explicit `chmod` is applied.
+
+Requirements:
+
+- The SSH user must have **read and write** access to `~/.fleet/` and its
+  contents.
+- On most Linux servers where the SSH user owns their home directory, this
+  is satisfied automatically.
+- If the home directory is root-owned or shared, ensure the SSH user's
+  `umask` and directory ownership allow writing to `~/.fleet/`.
+
+### State file versioning and history
+
+Fleet does **not** maintain any built-in versioning or history of the state
+file. Each `writeState` call overwrites the previous content atomically.
+There is no rollback log, no version counter, and no previous-state backup.
+
+If you need state history for auditing or recovery, implement it externally:
+
+- **Manual snapshots**: Copy the state file before and after deployments
+  (see [Backing up state](#backing-up-state) above).
+- **CI/CD integration**: Capture `~/.fleet/state.json` as a build artifact
+  in your deployment pipeline.
+- **Filesystem-level snapshots**: On ZFS or Btrfs, use filesystem snapshots
+  to capture the entire `~/.fleet/` directory at known-good points.
+
 ## Related documentation
 
 - [State management overview](./overview.md) -- architecture and design
@@ -298,3 +330,9 @@ configuration option to change this path.
   abstraction used for all state operations
 - [Fleet Root Troubleshooting](../fleet-root/troubleshooting.md) -- diagnosing
   and resolving fleet root resolution issues
+- [Security Model](../env-secrets/security-model.md) -- state file security
+  properties and hardening recommendations
+- [Deployment Pipeline](../deployment-pipeline.md) -- the full deploy workflow
+  that reads and writes state
+- [CI/CD Integration](../ci-cd-integration.md) -- capturing state as build
+  artifacts in CI/CD pipelines

@@ -278,5 +278,9 @@ exposure in `ps aux` output but is visible in the shell's environment space.
   on Infisical CLI bootstrap and remote secret fetching
 - [Secrets Resolution](../deploy/secrets-resolution.md) -- how secrets are
   resolved during deployment
+- [Security Model](../env-secrets/security-model.md) -- security properties
+  of the env/secrets system including transport and file permissions
 - [Validation Troubleshooting](../validation/troubleshooting.md) -- common
   validation failures including Zod schema errors
+- [Deploy Integrations](../deploy/integrations.md) -- how Infisical and other
+  external systems are used during deployment

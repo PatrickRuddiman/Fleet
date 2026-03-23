@@ -2,7 +2,8 @@
 
 The `fleet validate` command runs all configuration checks against a `fleet.yml`
 file and its referenced Docker Compose file, reporting errors and warnings to the
-terminal. It is the primary tool for pre-flight configuration verification.
+terminal. It is the primary tool for pre-flight configuration verification
+before running [`fleet deploy`](../cli-entry-point/deploy-command.md).
 
 Source: `src/commands/validate.ts`
 
@@ -222,23 +223,29 @@ path is `{cwd}/fleet.yml`.
 | In CI/CD pipeline | Yes | Gate deployments on configuration correctness |
 | Before `fleet env` | Optional | `fleet env` does not run validation |
 
-## Related pages
+## Related documentation
 
-- [Validation Overview](./overview.md) --- Architecture and check pipeline.
-- [Validation Codes Reference](./validation-codes.md) --- Complete catalog of
-  error and warning codes.
-- [Fleet Configuration Checks](./fleet-checks.md) --- Checks against
-  `fleet.yml`.
-- [Compose Configuration Checks](./compose-checks.md) --- Checks against Docker
-  Compose files.
-- [Troubleshooting](./troubleshooting.md) --- Common failures and fixes.
+- [Validation Overview](./overview.md) -- Architecture and check pipeline
+- [Validation Codes Reference](./validation-codes.md) -- Complete catalog of
+  error and warning codes
+- [Fleet Configuration Checks](./fleet-checks.md) -- Checks against
+  `fleet.yml`
+- [Compose Configuration Checks](./compose-checks.md) -- Checks against Docker
+  Compose files
+- [Troubleshooting](./troubleshooting.md) -- Common failures and fixes
 - [Configuration Loading and Validation](../configuration/loading-and-validation.md)
-  --- How `fleet.yml` is loaded and schema-validated.
-- [Configuration Schema Reference](../configuration/schema-reference.md) ---
-  Field-by-field `fleet.yml` specification.
-- [Deploy Command](../cli-entry-point/deploy-command.md) --- How validation runs
-  during deployment.
-- [CI/CD Integration](../ci-cd-integration.md) --- Using `fleet validate` as a
-  pipeline gate.
-- [Compose Query Functions](../compose/queries.md) --- Query functions that
-  validation checks rely on.
+  -- How `fleet.yml` is loaded and schema-validated
+- [Configuration Schema Reference](../configuration/schema-reference.md) --
+  Field-by-field `fleet.yml` specification
+- [Deploy Command](../cli-entry-point/deploy-command.md) -- How validation runs
+  during deployment
+- [Init Command](../cli-entry-point/init-command.md) -- How `fleet init`
+  generates the `fleet.yml` that `fleet validate` checks
+- [Deployment Pipeline](../deployment-pipeline.md) -- The full deploy pipeline
+  that gates on validation at Step 1
+- [CI/CD Integration](../ci-cd-integration.md) -- Using `fleet validate` as a
+  pipeline gate
+- [Compose Parser Internals](../compose/parser.md) -- How compose files are
+  parsed before validation checks run
+- [Compose Query Functions](../compose/queries.md) -- Query functions that
+  validation checks rely on

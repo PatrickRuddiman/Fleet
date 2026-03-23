@@ -159,9 +159,9 @@ Both backends pass command strings directly to a shell for execution:
 - **Local `streamExec`**: `spawn(command, { shell: true })` also uses a shell
 
 Fleet constructs commands internally (not from user input), but any component
-that builds command strings must take care to avoid injection — particularly
-when interpolating values from `fleet.yml`, stack names, or service names into
-shell commands.
+that builds command strings must take care to avoid injection -- particularly
+when interpolating values from [`fleet.yml`](../configuration/schema-reference.md),
+stack names, or service names into shell commands.
 
 ## Factory Function
 
@@ -208,3 +208,7 @@ execution, use `localhost` or `127.0.0.1` exactly.
   is used by lifecycle operations
 - [Deploy Sequence](../deploy/deploy-sequence.md) -- how the deploy pipeline
   uses the connection interface
+- [Process Status Docker Compose Integration](../process-status/docker-compose-integration.md) --
+  how `ExecFn` and `StreamExecFn` are used by `fleet ps` and `fleet logs`
+- [State Lifecycle](../state-management/state-lifecycle.md) -- how state read/write
+  operations use `exec` over SSH

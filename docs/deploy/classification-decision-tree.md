@@ -12,7 +12,7 @@ makes Fleet's selective deployment work.
 Every `fleet deploy` must decide what to do with each service. Without this
 decision tree, Fleet would either redeploy everything (wasteful) or require
 manual specification of which services changed (error-prone). The decision tree
-automates this by comparing freshly computed hashes against stored state from the
+automates this by comparing freshly computed hashes against [stored state](../state-management/overview.md) from the
 previous deployment.
 
 ## How It Works
@@ -201,6 +201,37 @@ When `--force` is used, classification is bypassed entirely in
 `src/deploy/deploy.ts:183-200`. All services are placed in `toDeploy` with
 reason `"forced"`. Hashes are still computed for accurate state recording.
 
+## State Types as the Classification Contract
+
+The classification decision tree depends on the shared type definitions in
+`src/state/types.ts`. These types form the contract between what the deployment
+pipeline stores and what the classifier reads:
+
+| Type | Role in classification |
+|------|----------------------|
+| `StackState` | Input to `classifyServices()` — provides the `services` record of previously stored per-service hashes |
+| `ServiceState` | Each entry contains `definition_hash`, `image_digest`, and `env_hash` that the classifier compares against candidate values |
+| `RouteState` | Not used by classification directly, but stored alongside service state in the same `StackState` object |
+
+The `ServiceState` optional fields (`image_digest`, `env_hash`, `skipped_at`,
+`one_shot`) are handled gracefully by the classifier:
+
+- **Missing `services` block**: Optional chaining at `src/deploy/classify.ts:56`
+  (`stackState.services?.[name]`) returns `undefined`, causing Step 2 (new
+  service) to match.
+- **Missing `image_digest`**: The stored value would be `undefined`, which is
+  not `null` and is not equal to a candidate digest. However, the comparison at
+  `src/deploy/classify.ts:84` requires `stored.image_digest !== null`, so an
+  `undefined` stored value is treated the same as `null` — the image digest
+  check is skipped.
+- **Missing `env_hash`**: Env hash comparison happens at the pipeline level
+  (`src/deploy/deploy.ts:162-165`), not inside the classifier. A missing stored
+  `env_hash` causes `envHashChanged` to be `false`, so no env-triggered restart
+  occurs.
+
+For the full field-by-field reference, see the
+[State Schema Reference](../state-management/schema-reference.md).
+
 ## Testing
 
 The classification logic is thoroughly tested in
@@ -214,8 +245,10 @@ The classification logic is thoroughly tested in
 - Deterministic output ordering (preserves `Object.keys` order)
 - Reason string formatting, including shortened digest display
 
-## Related Documentation
+## Related documentation
 
+- [Service Change Detection Overview](change-detection-overview.md) -- How
+  classification, deployment, and state types work together as a system
 - [Service Classification and Hashing Overview](service-classification-and-hashing.md)
 - [Hash Computation Pipeline](hash-computation.md) -- How the hashes compared by
   this decision tree are produced
@@ -227,5 +260,9 @@ The classification logic is thoroughly tested in
   function used in Step 1
 - [Deploy Command](../cli-entry-point/deploy-command.md) -- CLI entry point that
   triggers classification
+- [Deploy Sequence](../deploy-sequence.md) -- the 17-step pipeline where
+  classification runs as Step 10
+- [Failure Recovery](failure-recovery.md) -- how classification errors are
+  handled during deployment
 - [Validation](../validation/compose-checks.md) -- Pre-deployment checks on
   compose configuration

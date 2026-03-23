@@ -123,9 +123,10 @@ Both `logs` and `ps` pass the stack name as the Docker Compose project name
 using the `-p` flag. This is critical: Docker Compose uses the project name
 to identify which containers belong to a stack.
 
-The project name must match exactly what was used during `fleet deploy`.
-Fleet guarantees this by always using the `stack.name` value from `fleet.yml`
-as the project name. The name is validated by `STACK_NAME_REGEX`
+The project name must match exactly what was used during
+[`fleet deploy`](../deploy/deploy-sequence.md). Fleet guarantees this by always
+using the `stack.name` value from `fleet.yml` as the project name. The name is
+validated by [`STACK_NAME_REGEX`](../configuration/schema-reference.md#stack-name-constraints-stack_name_regex)
 (`/^[a-z\d][a-z\d-]*$/`) in `src/config/schema.ts:46`, which ensures:
 
 - Starts with a lowercase letter or digit
@@ -140,9 +141,9 @@ valid Fleet stack name is also a valid Docker Compose project name.
 If the Docker daemon is not running on the remote server:
 
 - **`fleet ps`**: The `docker compose ps` command returns a non-zero exit
-  code. The `ps` command falls back to showing services from the Fleet state
-  file with `"unknown"` status. The user sees a table, but all statuses
-  will be `"unknown"`.
+  code. The [`ps` command](./ps-command.md) falls back to showing services from
+  the [Fleet state file](../state-management/overview.md) with `"unknown"`
+  status. The user sees a table, but all statuses will be `"unknown"`.
 
 - **`fleet logs`**: The `docker compose logs` command fails. The error message
   from Docker (typically "Cannot connect to the Docker daemon") propagates
@@ -156,6 +157,8 @@ If the Docker daemon is not running on the remote server:
 - [Troubleshooting](./troubleshooting.md)
 - [State Version Compatibility](./state-version-compatibility.md) -- how `ps`
   handles different state file versions
+- [Configuration Schema Reference](../configuration/schema-reference.md) --
+  `STACK_NAME_REGEX` validation for project names
 - [Caddy proxy configuration](../caddy-proxy/overview.md)
 - [Deploy sequence](../deploy/deploy-sequence.md)
 - [SSH Connection API](../ssh-connection/connection-api.md) -- the `ExecFn` and

@@ -43,7 +43,9 @@ Compose plugin. See the
 Stack names are validated against the pattern `^[a-z\d][a-z\d-]*$` (defined in
 `src/config/schema.ts:46`). This ensures compatibility with Docker Compose
 project naming rules, which require lowercase alphanumeric characters and
-hyphens.
+hyphens. See the
+[Configuration Schema Reference](../configuration/schema-reference.md#stack)
+for full stack name constraints.
 
 ### JSON output parsing
 
@@ -84,7 +86,9 @@ not exposed to the host, Fleet accesses it via `docker exec` on the remote
 server.
 
 The `stop` and `teardown` commands remove Caddy routes before stopping
-containers. The `restart` command does not modify Caddy routes because the
+containers. See [Teardown Operation](../stack-lifecycle/teardown.md) for the
+full teardown flow and [Stop Operation](../stack-lifecycle/stop.md) for stop
+details. The `restart` command does not modify Caddy routes because the
 container retains its network identity after restart.
 
 ### Route identification
@@ -224,7 +228,9 @@ state for different purposes:
 - **Write method**: Atomic (write to `.tmp` file, then `mv`)
 
 See [Server State Management](../state-management/overview.md) for the complete schema
-and read/write mechanics.
+and read/write mechanics, and
+[State Lifecycle](../state-management/state-lifecycle.md) for how state flows
+across all operations.
 
 ### Manual state inspection
 
@@ -274,6 +280,10 @@ name. All Fleet commands have unique names (`logs`, `ps`, `restart`, `stop`,
 `teardown`, etc.), so conflicts are not currently possible unless a new command
 reuses an existing name.
 
+For a deeper look at Commander.js integration including the program factory
+pattern and global error handling, see
+[CLI Entry Point Integrations](../cli-entry-point/integrations.md#commanderjs).
+
 ## Related documentation
 
 - [Operational CLI Commands](./operational-commands.md) -- full command
@@ -303,3 +313,9 @@ reuses an existing name.
   stop, restart, and teardown
 - [Proxy Status and Reload](../proxy-status-reload/overview.md) -- proxy status
   and route reload commands
+- [Docker Compose Integration](../process-status/docker-compose-integration.md)
+  -- Docker Compose version requirements and JSON output format
+- [Env Command](../cli-entry-point/env-command.md) -- standalone secrets push
+  command
+- [Environment and Secrets Overview](../env-secrets/overview.md) -- secrets
+  resolution strategies

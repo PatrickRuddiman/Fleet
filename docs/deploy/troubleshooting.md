@@ -37,8 +37,10 @@ under "Validation errors:".
 **Source**: `src/deploy/deploy.ts:51-57`
 
 **Resolution**: Fix the `fleet.yml` or `compose.yml` issues described in the
-error codes. See [Validation Codes Reference](../validation/validation-codes.md) for
-the full catalog of codes. Common issues:
+error codes. Run [`fleet validate`](../validation/validate-command.md) to check
+your configuration before deploying. See
+[Validation Codes Reference](../validation/validation-codes.md) for the full
+catalog of codes. Common issues:
 
 | Error Pattern | Likely Cause |
 |--------------|-------------|
@@ -53,7 +55,8 @@ the full catalog of codes. Common issues:
 **Source**: `src/deploy/deploy.ts:80-88`
 
 **Resolution**: Either:
-- Remove the domain from the other stack first (`fleet teardown {other}`)
+- Remove the domain from the other stack first
+  ([`fleet teardown {other}`](../stack-lifecycle/teardown.md))
 - Choose a different domain for this stack
 - If the other stack is stale, manually clean up `state.json` on the server:
   ```bash
@@ -146,45 +149,44 @@ rejected. Move the file into the project directory or use Infisical instead.
 
 ### Failed to Install Infisical CLI (Step 9)
 
-**Symptom**: `Failed to install Infisical CLI: command exited with code {N}`.
+> **Note**: Fleet no longer uses the Infisical CLI. It uses the `@infisical/sdk`
+> Node.js SDK which runs locally. If you see this error, you may be running an
+> older version of Fleet.
 
-**Source**: `src/deploy/infisical.ts:19-24`
+### Infisical SDK Authentication Failure (Step 9)
+
+**Symptom**: `resolveSecrets()` throws an error related to Infisical
+authentication or secret retrieval.
+
+**Source**: `src/deploy/helpers.ts:279-298`
 
 | Cause | Resolution |
 |-------|-----------|
-| Not a Debian/Ubuntu server | Install Infisical CLI manually (see [Integrations](integrations.md#infisical)) |
-| No outbound HTTPS to `dl.cloudsmith.io` | Allow firewall access or pre-install the CLI |
-| `sudo` not available or password required | Configure passwordless sudo for the deploy user, or pre-install |
-| `apt-get` lock held by another process | Wait and retry, or kill the blocking process |
+| Invalid or expired access token | Rotate the token via the Infisical dashboard or Universal Auth |
+| Wrong project ID | Verify `project_id` in `fleet.yml` matches the Infisical dashboard |
+| Wrong environment/path | Verify `environment` and `path` in the Infisical configuration |
+| Network timeout from local machine | Check that `fleet deploy` machine can reach `app.infisical.com` |
+| `$INFISICAL_TOKEN` not expanded | Ensure the environment variable is exported before running `fleet deploy` |
 
 ### Infisical CLI Installation Could Not Be Verified (Step 9)
 
-**Symptom**: `Infisical CLI installation could not be verified: command exited with code {N}`.
+> **Note**: This error section applies to older Fleet versions that used the
+> Infisical CLI. Current versions use the `@infisical/sdk` Node.js SDK instead.
+> See [Integrations Reference](integrations.md#infisical) for the current
+> integration details.
 
-**Source**: `src/deploy/infisical.ts:28-33`
+### Failed to Export Secrets via Infisical (Step 9)
 
-The install command succeeded (exit code 0) but `infisical --version` still
-fails. This may indicate a PATH issue or a corrupted installation.
+**Symptom**: `resolveSecrets()` throws during Infisical secret retrieval.
 
-**Resolution**:
-```bash
-ssh user@server "which infisical"
-ssh user@server "infisical --version"
-ssh user@server "ls -la /usr/bin/infisical"
-```
-
-### Failed to Export Secrets via Infisical CLI (Step 9)
-
-**Symptom**: `Failed to export secrets via Infisical CLI: {stderr}`.
-
-**Source**: `src/deploy/helpers.ts:273-277`
+**Source**: `src/deploy/helpers.ts:279-298`
 
 | Cause | Resolution |
 |-------|-----------|
 | Invalid or expired token | Rotate the Infisical token and update `$INFISICAL_TOKEN` |
 | Wrong project ID | Verify `project_id` in `fleet.yml` matches the Infisical dashboard |
 | Wrong environment/path | Verify `environment` and `path` in the Infisical configuration |
-| No outbound HTTPS to Infisical API | Allow `app.infisical.com` (or self-hosted URL) through the firewall |
+| Local machine cannot reach Infisical API | Check firewall, proxy, and DNS settings on the machine running `fleet deploy` |
 
 ### Failed to Pull Images (Step 11)
 
@@ -253,7 +255,7 @@ This error means something else went wrong.
 | Container not running | Check `docker ps -a`; the container may have crashed after Step 12 |
 | fleet-proxy network does not exist | The proxy bootstrap may have failed; re-run with `--force` |
 
-### Health Check Warnings (Step 14)
+### Health Check Warnings (Step 15)
 
 **Symptom**: Warning in the deploy summary:
 `Health check timed out for {container}{path} after {N}s (last status: {status})`.
@@ -276,14 +278,15 @@ ssh user@server "docker exec {stackName}-{service}-1 which curl"
 ssh user@server "docker logs {stackName}-{service}-1 --tail 50"
 ```
 
-### Failed to Register Route (Step 15)
+### Failed to Register Route (Step 14)
 
-**Symptom**: `Failed to register route for {domain}: {stderr}`.
+**Symptom**: `Failed to register routes: {stderr}`.
 
-**Source**: `src/deploy/helpers.ts:388-392`
+**Source**: `src/deploy/helpers.ts:440-442`
 
-The Caddy admin API rejected the route registration. This usually means the
-Caddy container is not responding or the route JSON is malformed.
+The Caddy admin API rejected the atomic `/load` config replacement. This
+usually means the Caddy container is not responding or the generated config
+JSON is malformed.
 
 **Debugging**:
 ```bash
@@ -346,7 +349,9 @@ If a deploy failed between Step 12 (container start) and Step 16 (state write),
 ### Ghost Routes in Caddy
 
 Routes present in Caddy but not in `state.json` -- usually left over from a
-failed teardown or manual testing. See also
+failed teardown or manual testing. See
+[Proxy Status Command](../proxy-status-reload/proxy-status.md) for ghost route
+detection and also
 [Proxy Status and Reload Troubleshooting](../proxy-status-reload/troubleshooting.md)
 for ghost route handling.
 
@@ -358,7 +363,7 @@ fleet proxy status
 **Resolution**:
 ```bash
 # Remove a specific ghost route
-ssh user@server "docker exec fleet-proxy curl -X DELETE http://localhost:2019/id/{stackName}__{serviceName}"
+ssh user@server "docker exec fleet-proxy curl -X DELETE http://localhost:2019/id/{stackName}__{domain-slug}"
 
 # Or re-register all routes from state
 fleet proxy reload
@@ -391,7 +396,7 @@ operations are sequential.
 | Step 10 | Hash computation (one `docker image inspect` per service) | Use `--force` to skip classification when you know everything changed |
 | Step 11 | Image pulls over slow network | Use `--skip-pull` if images are pre-pulled |
 | Step 12 | Selective mode starts services one at a time | Use `--force` for batch startup |
-| Step 14 | Health check polling waits for timeout on unhealthy services | Use `--no-health-check` or reduce `timeout_seconds` |
+| Step 15 | Health check polling waits for timeout on unhealthy services | Use `--no-health-check` or reduce `timeout_seconds` |
 | SSH latency | Every `exec()` call is a round-trip | Deploy from a machine with low latency to the server |
 
 ### Dry Run Started the Proxy
@@ -493,7 +498,7 @@ fleet deploy --force
 This forces a full bootstrap and redeploy. All stacks must be redeployed because
 the state file no longer tracks any existing deployments.
 
-## Related Pages
+## Related documentation
 
 - [Failure Recovery and Partial Deploys](failure-recovery.md)
 - [17-Step Deploy Sequence](deploy-sequence.md)
@@ -514,6 +519,8 @@ the state file no longer tracks any existing deployments.
   schema and recovery
 - [SSH Connection Overview](../ssh-connection/overview.md) -- SSH connectivity
   troubleshooting
+- [Env Secrets Troubleshooting](../env-secrets/troubleshooting.md) --
+  Infisical and env file specific failures
 - [Environment and Secrets Overview](../env-secrets/overview.md) -- env
   push and Infisical troubleshooting
 - [Caddy Proxy Troubleshooting](../caddy-proxy/troubleshooting.md) -- Caddy

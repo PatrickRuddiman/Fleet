@@ -51,7 +51,8 @@ If the deploy fails between step 12 (starting containers) and step 16
 Recovery: re-run `fleet deploy`. The pipeline will detect running containers,
 recompute hashes, and write correct state. See
 [Deploy Failure Recovery](../deploy/failure-recovery.md) for more recovery
-scenarios.
+scenarios and [Deployment Troubleshooting](../deploy/troubleshooting.md) for
+step-by-step error diagnosis.
 
 ## State across bootstrap
 
@@ -137,8 +138,8 @@ auditing:
 | `fleet restart` | Yes | No | Validates stack exists, no state change |
 | `fleet ps` | Yes | No | Displays stack/service info |
 | `fleet logs` | Yes | No | Validates stack exists for project name |
-| `fleet env` | Yes | No | Looks up stack directory path |
-| `fleet proxy status` | Yes | No | Reconciles live Caddy routes with state |
+| `fleet env` | Yes | No | Looks up stack directory path (see [Environment and Secrets Overview](../env-secrets/overview.md)) |
+| `fleet proxy status` | Yes | No | Reconciles live Caddy routes with state (see [Proxy Status](../proxy-status-reload/proxy-status.md)) |
 | `fleet proxy reload` | Yes | No | Reads routes from state, reloads in Caddy |
 | Bootstrap | Yes | Yes | Sets `fleet_root` and `caddy_bootstrapped` |
 
@@ -221,6 +222,106 @@ This architecture means:
 - **Debugging is straightforward**: `cat ~/.fleet/state.json` shows exactly
   what Fleet believes about the server.
 
+## Data model structure
+
+The state model is hierarchical. Different modules operate on different
+levels of this hierarchy:
+
+```mermaid
+erDiagram
+    FleetState ||--o{ StackState : "stacks (by name)"
+    StackState ||--o{ RouteState : "routes (array)"
+    StackState ||--o{ ServiceState : "services (by name)"
+
+    FleetState {
+        string fleet_root
+        boolean caddy_bootstrapped
+    }
+
+    StackState {
+        string path
+        string compose_file
+        string deployed_at
+        string env_hash
+    }
+
+    ServiceState {
+        string definition_hash
+        string deployed_at
+        string status
+        string image
+        string image_digest
+        string env_hash
+        string skipped_at
+        boolean one_shot
+    }
+
+    RouteState {
+        string host
+        string service
+        int port
+        string caddy_id
+    }
+```
+
+Module-level access patterns by data tier:
+
+| Data tier | Modules that read/write | Purpose |
+|---|---|---|
+| `FleetState` (top-level) | bootstrap, deploy | `caddy_bootstrapped` flag, `fleet_root` path |
+| `StackState` | deploy, stop, teardown, ps, env | Stack paths, timestamps, env hashes |
+| `ServiceState` | deploy (classify), ps | Per-service hash comparison, status display |
+| `RouteState` | deploy (route registration), teardown (route removal), proxy status/reload | Caddy route identifiers for admin API operations |
+
+## Atomic write protocol
+
+The `writeState` function in `src/state/state.ts:74-97` implements a
+three-step crash-safe write protocol over SSH:
+
+```mermaid
+sequenceDiagram
+    participant Fleet as Fleet CLI
+    participant SSH as SSH Session
+    participant FS as Remote Filesystem
+
+    Fleet->>SSH: mkdir -p ~/.fleet
+    SSH->>FS: Create directory (idempotent)
+    FS-->>SSH: exit code
+    SSH-->>Fleet: ExecResult
+
+    alt mkdir failed
+        Fleet->>Fleet: Throw Error (detail from stderr)
+    end
+
+    Fleet->>SSH: cat << 'FLEET_EOF' > ~/.fleet/state.json.tmp
+    SSH->>FS: Write JSON to temp file
+    FS-->>SSH: exit code
+    SSH-->>Fleet: ExecResult
+
+    alt write failed
+        Fleet->>Fleet: Throw Error (detail from stderr)
+        Note over FS: state.json unchanged, .tmp may be partial
+    end
+
+    Fleet->>SSH: mv ~/.fleet/state.json.tmp ~/.fleet/state.json
+    SSH->>FS: Atomic rename (POSIX rename(2))
+    FS-->>SSH: exit code
+    SSH-->>Fleet: ExecResult
+
+    alt mv failed
+        Fleet->>Fleet: Throw Error (detail from stderr)
+        Note over FS: state.json unchanged, .tmp has complete data
+    end
+
+    Note over FS: state.json now contains new state
+```
+
+Each step is a separate SSH `exec` call with independent error handling.
+At no point can `state.json` contain partial data -- readers always see
+either the complete previous state or the complete new state. See the
+[operations guide](./operations-guide.md#ssh-connection-drops-during-write)
+for failure mode analysis at each stage.
+
 ## Related documentation
 
 - [State management overview](./overview.md) -- architecture and design
@@ -245,3 +346,9 @@ This architecture means:
   -- how `fleet ps` handles different state versions
 - [Fleet Root Directory Layout](../fleet-root/directory-layout.md) -- the
   filesystem layout that state references
+- [SSH Connection API](../ssh-connection/connection-api.md) -- the `ExecFn`
+  interface used by `readState` and `writeState` for remote execution
+- [Environment and Secrets Overview](../env-secrets/overview.md) -- how
+  `fleet env` reads state to locate stack directories
+- [Proxy Status Command](../proxy-status-reload/proxy-status.md) -- how proxy
+  status reconciles live Caddy routes against state

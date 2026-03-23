@@ -38,9 +38,9 @@ flowchart TD
     HasEntries -->|Yes| WriteEntries[Write entries to .env]
     HasEntries -->|No| CheckInfisical
     WriteEntries --> CheckInfisical{Has infisical?}
-    CheckInfisical -->|Yes| ExportInfisical[Remote infisical export → .env]
+    CheckInfisical -->|Yes| FetchSecrets[SDK fetches secrets locally → upload .env]
     CheckInfisical -->|No| Done[Done]
-    ExportInfisical --> SetPerms[chmod 0600]
+    FetchSecrets --> SetPerms[chmod 0600]
     SetPerms --> Done
 
     FileUpload --> Done
@@ -53,32 +53,37 @@ flowchart TD
 |----------|--------------------|-----------|--------|
 | **File upload** | `env: { file: .env.production }` | Base64-encode local file, decode on server | `helpers.ts:208-236` |
 | **Inline entries** | `env: [{ key, value }, ...]` | Concatenate key=value lines, upload via heredoc | `helpers.ts:238-252` |
-| **Infisical export** | `env: { infisical: { ... } }` | Run `infisical export` on server, output to `.env` | `helpers.ts:266-286` |
+| **Infisical SDK** | `env: { infisical: { ... } }` | Fetch secrets via `@infisical/sdk` locally, upload to server | `helpers.ts:279-298` |
 
 All strategies produce a `{stackDir}/.env` file with `0600` permissions.
-File-upload mode includes path-traversal protection. For the upload mechanisms
-used by each strategy, see [Atomic File Uploads](file-upload.md). For full
-configuration examples, per-strategy behavior, and edge cases, see
+File-upload mode includes path-traversal protection (see
+[Security Model](../env-secrets/security-model.md) for details). For the upload
+mechanisms used by each strategy, see [Atomic File Uploads](file-upload.md). For
+full configuration examples, per-strategy behavior, and edge cases, see
 [Env Configuration Shapes](../env-secrets/env-configuration-shapes.md).
 
 ## Infisical Integration
 
 Fleet integrates with [Infisical](https://infisical.com/docs) for centralized
-secrets management. During deployment, Fleet bootstraps the Infisical CLI on
-the remote server (Debian/Ubuntu only via `apt-get`), then runs
-`infisical export` with the token passed as an environment variable (not a CLI
-flag) to avoid process-list exposure. The token field supports `$VAR` expansion
-at config load time for CI/CD integration.
+secrets management via the **`@infisical/sdk` Node.js SDK**. During deployment,
+`resolveSecrets()` instantiates the SDK client locally, authenticates with a
+pre-obtained access token via `client.auth().accessToken(token)`, and fetches
+secrets using `client.secrets().listSecrets()`. The fetched secrets are formatted
+as dotenv content and uploaded to the remote server as `{stackDir}/.env` via
+base64 encoding. No CLI installation or remote server tooling is required.
 
-For full details on CLI bootstrap, authentication, token rotation, and network
-requirements, see
-[Infisical Integration](../env-secrets/infisical-integration.md).
+The token field supports `$VAR` expansion at config load time for CI/CD
+integration.
+
+For full details on authentication, token types, and network requirements, see
+[Infisical Integration](../env-secrets/infisical-integration.md) and
+[Integrations Reference](integrations.md#infisical).
 
 ## The --env-file Flag
 
 When Docker Compose starts containers, the `--env-file` flag tells it to load
 environment variables from the specified file. The `configHasSecrets()` function
-at `src/deploy/helpers.ts:409-423` determines whether this flag is needed:
+at `src/deploy/helpers.ts:451-465` determines whether this flag is needed:
 
 - Returns `true` if any env source is configured (file, entries, or Infisical)
 - Returns `false` if `env` is absent or empty
@@ -106,12 +111,16 @@ This applies to all three strategies:
 - [Env Configuration Shapes](../env-secrets/env-configuration-shapes.md) --
   detailed per-shape documentation and examples
 - [Infisical Integration](../env-secrets/infisical-integration.md) -- deep dive
-  on Infisical CLI bootstrap and authentication
+  on Infisical SDK authentication and secret retrieval
 - [Environment and Secrets Overview](../env-secrets/overview.md) -- the complete
   `fleet env` workflow
 - [Configuration Environment Variables](../configuration/environment-variables.md)
   -- `$VAR` expansion mechanism
 - [Validation Codes Reference](../validation/validation-codes.md) -- includes
   `ENV_CONFLICT` validation code
+- [Fleet Configuration Checks](../validation/fleet-checks.md) -- the
+  `checkEnvConflict` validation that prevents entries+infisical conflicts
 - [Fleet Root Directory Layout](../fleet-root/directory-layout.md) -- where
   `.env` files and secrets are stored on the remote host
+- [State Data Model](../env-secrets/state-data-model.md) -- how `env_hash`
+  tracks `.env` file changes for change detection

@@ -85,7 +85,7 @@ flowchart TD
 - You have changed `docker-compose.yml` or environment variables -- use
   `fleet deploy` instead, since `docker compose restart` does not pick up
   compose file changes. See the [Deploy Sequence](../deploy/deploy-sequence.md)
-  for details.
+  and [Change Detection](../deploy/change-detection-overview.md) for details.
 - You need to restart the entire stack -- run `fleet restart` for each
   service, or use `fleet stop` followed by `fleet deploy`
 - You want to apply a new container image -- use `fleet deploy` which handles

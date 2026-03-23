@@ -43,7 +43,7 @@ default --- there is no built-in mechanism to promote warnings to errors.
 and may only contain lowercase letters, digits, and hyphens. This constraint is
 stricter than Docker Compose's own project naming rules (which also allow
 underscores and dots). The stricter pattern ensures compatibility with DNS
-subdomain labels, Docker container naming, and Caddy route identifiers.
+subdomain labels, Docker container naming, and [Caddy route identifiers](../caddy-proxy/caddy-admin-api.md).
 
 **How Docker Compose names relate**: Docker Compose uses the project name
 (set via `-p` flag) as a prefix for container names (`{project}-{service}-{n}`).
@@ -67,10 +67,12 @@ and hyphens. Do not start with a hyphen.
 **Trigger**: Both `env.entries` and `env.infisical` are configured in `fleet.yml`
 with non-empty values.
 
-**What this means**: Fleet's environment resolution writes a `.env` file on the
+**What this means**: Fleet's [environment resolution](../deploy/secrets-resolution.md) writes a `.env` file on the
 remote server. When both sources are present, `env.entries` would write the file
 first, then `env.infisical` would overwrite it entirely (using `>`, not `>>`).
-The entries would be silently lost. This check promotes what would be a silent
+The entries would be silently lost. See
+[Environment Configuration Shapes](../env-secrets/env-configuration-shapes.md)
+for details on each env shape. This check promotes what would be a silent
 data loss into an explicit error.
 
 **What happens if bypassed**: If this check were somehow bypassed (e.g., by
@@ -313,11 +315,13 @@ services:
 **What this means**: Without `max_attempts`, a failing container with
 `restart: "on-failure"` will restart indefinitely, consuming server resources
 and potentially masking the underlying failure. This is especially problematic
-for one-shot or migration containers that should fail definitively.
+for one-shot or migration containers that should fail definitively. See the
+[Stack Lifecycle Overview](../stack-lifecycle/overview.md) for how Fleet manages
+these container types.
 
 **Fleet's deployment behavior**: Services with `restart: "on-failure"` are
 classified as "always redeploy" by Fleet's [deployment classification system](../deploy/service-classification-and-hashing.md)
-(see `src/compose/queries.ts:57-68`). They are redeployed on every
+(see [compose queries](../compose/queries.md), `src/compose/queries.ts:57-68`). They are redeployed on every
 `fleet deploy` regardless of hash changes.
 
 **Resolution**: Add `deploy.restart_policy.max_attempts` to the service in
@@ -339,7 +343,7 @@ classified as "always redeploy" by Fleet's [deployment classification system](..
 | `NO_IMAGE_OR_BUILD` | warning | Compose | Service lacks both `image` and `build` |
 | `ONE_SHOT_NO_MAX_ATTEMPTS` | warning | Compose | `on-failure` restart without `max_attempts` |
 
-## Related pages
+## Related documentation
 
 - [Validation Overview](./overview.md)
 - [Fleet Configuration Checks](./fleet-checks.md) -- implementation details
@@ -361,3 +365,15 @@ classified as "always redeploy" by Fleet's [deployment classification system](..
   80/443 reservation
 - [Environment and Secrets](../env-secrets/overview.md) -- context for
   `ENV_CONFLICT` validation
+- [State Management Overview](../state-management/overview.md) -- server state
+  used for cross-stack collision detection (DUPLICATE_HOST, PORT_80/443_CONFLICT)
+- [Fleet Root Resolution Flow](../fleet-root/resolution-flow.md) -- how
+  `fleet_root` determines directory names affected by INVALID_STACK_NAME
+- [Configuration Loading and Validation](../configuration/loading-and-validation.md) --
+  how `fleet.yml` is loaded and parsed before validation codes are checked
+- [Stack Lifecycle Overview](../stack-lifecycle/overview.md) -- context for
+  one-shot containers and the ONE_SHOT_NO_MAX_ATTEMPTS warning
+- [Bootstrap Sequence](../bootstrap/bootstrap-sequence.md) -- how the Caddy
+  proxy is started, providing context for PORT_80/443_CONFLICT codes
+- [Environment Configuration Shapes](../env-secrets/env-configuration-shapes.md) --
+  the three env shapes relevant to the ENV_CONFLICT code

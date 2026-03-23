@@ -80,15 +80,24 @@ sequenceDiagram
         CLI->>CLI: Reconcile live hostnames vs state hostnames
         CLI->>CLI: Print status table + warnings
     else Route Reload
-        loop For each route in state
-            CLI->>SSH: exec("docker exec fleet-proxy curl -X DELETE .../id/{caddy_id}")
-            SSH->>Docker: docker exec
-            Docker->>Caddy: DELETE /id/{caddy_id}
+        CLI->>CLI: Build all routes from FleetState
+        CLI->>SSH: exec("docker exec fleet-proxy curl GET .../config/")
+        SSH->>Docker: docker exec
+        Docker->>Caddy: GET /config/
+        Caddy-->>Docker: Full config JSON
+        Docker-->>SSH: stdout
+        SSH-->>CLI: Full Caddy config
 
-            CLI->>SSH: exec("docker exec fleet-proxy curl -X POST .../routes")
-            SSH->>Docker: docker exec
-            Docker->>Caddy: POST /config/apps/http/servers/fleet/routes
-        end
+        CLI->>CLI: Merge routes into config<br/>(replace .apps.http.servers.fleet.routes)
+
+        CLI->>SSH: exec("docker exec fleet-proxy curl POST /load")
+        SSH->>Docker: docker exec
+        Docker->>Caddy: POST /load (full config)
+        Note over Caddy: Atomic replacement<br/>Zero downtime<br/>Auto-rollback on failure
+        Caddy-->>Docker: 200 OK or error
+        Docker-->>SSH: exit code
+        SSH-->>CLI: Result
+
         CLI->>CLI: Print summary (succeeded / failed)
     end
 
@@ -160,4 +169,6 @@ outside the container is via `docker exec`.
 - [CLI Entry Point](../cli-entry-point/proxy-commands.md) -- How `fleet proxy status` and
     `fleet proxy reload` are registered as commands
 - [Deploy Failure Recovery](../deploy/failure-recovery.md) -- How `fleet proxy reload`
-    helps recover from partial deploy failures
+  helps recover from partial deploy failures
+- [Caddy Route Management](../deploy/caddy-route-management.md) -- How routes
+  are registered and deleted during the deploy pipeline

@@ -10,17 +10,18 @@ deployment.
 After `fleet deploy` places a stack on the remote server, operators need runtime
 controls to manage that stack. These commands fill the gap between deployment and
 the next deployment cycle, providing visibility into running services and the
-ability to stop or destroy stacks when they are no longer needed.
+ability to [stop](../stack-lifecycle/stop.md) or
+[destroy](../stack-lifecycle/teardown.md) stacks when they are no longer needed.
 
 ## How they work
 
 Every operational command follows the same execution pattern:
 
 1. Load `fleet.yml` from the current working directory
-2. Open an SSH connection to the remote server
+2. Open an [SSH connection](../ssh-connection/connection-lifecycle.md) to the remote server
 3. Read the Fleet state file (`~/.fleet/state.json`) on the server
 4. Validate the target stack exists in state
-5. Execute Docker Compose and/or Caddy admin API commands over SSH
+5. Execute Docker Compose and/or [Caddy admin API](../caddy-proxy/caddy-admin-api.md) commands over SSH
 6. (For destructive operations) Update the persisted state file
 
 The command files under `src/commands/` are thin registration shells that use
@@ -99,8 +100,7 @@ used for route mappings and deployment timestamps. The output is formatted as an
 aligned table with columns: STACK, SERVICE, STATUS, ROUTES, DEPLOYED AT.
 
 For a detailed explanation of how `ps` assembles data from multiple sources,
-see [Process Status Data Assembly](./ps-data-assembly.md) and the
-[Ps Command](../process-status/ps-command.md) reference.
+see the [Ps Command](../process-status/ps-command.md) reference.
 
 **Example output**:
 
@@ -160,7 +160,6 @@ The stack is removed from Fleet state, so `fleet ps` will no longer show it.
 To resume the stack, you must run `fleet deploy` again.
 
 For a detailed comparison with `teardown`, see
-[Stop vs Teardown Lifecycle](./stop-vs-teardown.md) and
 [Stop Operation](../stack-lifecycle/stop.md).
 
 ### `fleet teardown`
@@ -189,7 +188,6 @@ Without `--volumes`, named volumes are preserved, allowing data recovery.
 With `--volumes`, all persistent data is irreversibly deleted.
 
 For a detailed comparison with `stop`, see
-[Stop vs Teardown Lifecycle](./stop-vs-teardown.md) and
 [Teardown Operation](../stack-lifecycle/teardown.md).
 
 ## Docker Compose project naming
@@ -209,18 +207,16 @@ directory containing your `fleet.yml` file. See
 
 ## Related documentation
 
-- [Stop vs Teardown Lifecycle](./stop-vs-teardown.md) -- detailed comparison
-  of stop and teardown behavior
-- [Process Status Data Assembly](./ps-data-assembly.md) -- how `fleet ps`
+- [Process and Service Status](../process-status/) -- implementation details
+  of logs and ps
+- [Ps Command](../process-status/ps-command.md) -- how `fleet ps`
   merges data from multiple sources
-- [Failure Modes and Troubleshooting](./failure-modes.md) -- what happens when
+- [Stack Lifecycle Operations](../stack-lifecycle/) -- implementation details
+  of stop, restart, and teardown
+- [Failure Modes and Troubleshooting](../stack-lifecycle/failure-modes.md) -- what happens when
   operations fail mid-execution
 - [CLI Entry Point and Command Registration](../cli-entry-point/) -- how
   commands are registered with Commander.js
-- [Stack Lifecycle Operations](../stack-lifecycle/) -- implementation details
-  of stop, restart, and teardown
-- [Process and Service Status](../process-status/) -- implementation details
-  of logs and ps
 - [Server State Management](../state-management/) -- how `~/.fleet/state.json`
   works
 - [SSH Connection Layer](../ssh-connection/) -- how remote execution works
@@ -228,3 +224,9 @@ directory containing your `fleet.yml` file. See
   orchestration that these commands complement
 - [Caddy Reverse Proxy Configuration](../caddy-proxy/) -- how routes are
   managed
+- [Validate Command](../validation/validate-command.md) -- pre-flight
+  configuration verification before deployment
+- [Logs Command Reference](../process-status/logs-command.md) -- detailed
+  documentation of the `fleet logs` implementation
+- [Process Status Troubleshooting](../process-status/troubleshooting.md) --
+  debugging common issues with `fleet logs` and `fleet ps`

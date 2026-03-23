@@ -1,12 +1,12 @@
 # Compose Module Integration
 
-## What
+## What this covers
 
 The compose module is consumed by 10+ files across five other Fleet modules.
 This page maps every known consumer, what they import, and how the compose
 data flows through the system.
 
-## Why
+## Why this matters
 
 Understanding cross-module dependencies is essential for maintaining the compose
 module. Changes to exported types or function signatures affect multiple
@@ -133,5 +133,7 @@ early. See [Validation Codes](../validation/validation-codes.md) for the
   into the validation pipeline
 - [Fleet Configuration Checks](../validation/fleet-checks.md) -- fleet.yml
   validation that runs alongside compose checks
+- [Configuration Overview](../configuration/overview.md) -- how `FleetConfig`
+  references compose services via routes and stack settings
 - [Project Initialization](../project-init/overview.md) -- how `fleet init`
   discovers and parses compose files

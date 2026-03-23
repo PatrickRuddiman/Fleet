@@ -7,7 +7,8 @@ operators need to ensure, and how the optional ACME email configuration works.
 
 ## How Automatic HTTPS Works
 
-When Fleet registers a route with a hostname (e.g., `app.example.com`), Caddy
+When Fleet registers a route with a hostname (e.g., `app.example.com`) via the
+[route registration process](../deploy/caddy-route-management.md), Caddy
 automatically:
 
 1. **Provisions a TLS certificate** from Let's Encrypt (primary) and ZeroSSL
@@ -30,7 +31,7 @@ For automatic HTTPS to work, the following must be true at deploy time:
 | **DNS points to the server** | The domain's A/AAAA record must resolve to the server's public IP. Caddy validates domain ownership via HTTP-01 challenge. |
 | **Port 80 is reachable** | Let's Encrypt sends HTTP-01 challenge requests to port 80. Firewalls, security groups, and cloud load balancers must allow inbound TCP/80. |
 | **Port 443 is reachable** | Required for serving HTTPS traffic. |
-| **`caddy_data` volume persists** | Certificates and private keys are stored here. Volume loss forces re-issuance. |
+| **`caddy_data` volume persists** | Certificates and private keys are stored here. Volume loss forces re-issuance. See [Proxy Docker Compose](./proxy-compose.md) for volume configuration. |
 
 If any prerequisite is not met, Caddy will retry certificate issuance with
 exponential backoff for up to 30 days. Routes remain functional over plain
@@ -193,7 +194,7 @@ environment by modifying the bootstrap config. Fleet does not currently expose
 this option, but it can be implemented by extending `BootstrapOptions` to
 include a `staging` flag that changes the ACME issuer URL.
 
-## Related Documentation
+## Related documentation
 
 - [Architecture Overview](./overview.md) -- How TLS fits into the overall
   proxy design
@@ -214,4 +215,8 @@ include a `staging` flag that changes the ACME issuer URL.
   registration and removal during deployment
 - [Project Init Integrations](../project-init/integrations.md) -- how project
   initialization interacts with TLS and route configuration
+- [Deploy Failure Recovery](../deploy/failure-recovery.md) -- recovery
+  procedures when TLS or route registration fails during deployment
+- [Security Model](../env-secrets/security-model.md) -- transport security
+  via SSH for all Fleet remote operations
 - [Official Caddy Automatic HTTPS docs](https://caddyserver.com/docs/automatic-https)

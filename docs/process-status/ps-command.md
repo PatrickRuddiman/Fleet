@@ -74,7 +74,8 @@ Per-service timestamps are resolved using the following priority:
 The `ps` command merges data from three sources to build each table row.
 Container status is always queried live from Docker -- it is never read from
 cached state. This ensures `fleet ps` reflects the actual state of running
-containers.
+containers, even after operations like [`fleet stop`](../stack-lifecycle/stop.md) or
+[`fleet restart`](../cli-commands/operational-commands.md).
 
 ```mermaid
 flowchart TD
@@ -200,3 +201,10 @@ identifier.
 - [Deploy helpers](../deploy/deploy-sequence.md)
 - [Configuration Schema Reference](../configuration/schema-reference.md) --
   stack name constraints and route schema
+- [Service Classification](../deploy/service-classification-and-hashing.md) --
+  how services are classified into deploy/restart/skip buckets, affecting the
+  `skipped_at` timestamp shown by `fleet ps`
+- [Stack Lifecycle: Stop](../stack-lifecycle/stop.md) -- how `fleet stop`
+  affects the container status shown by `fleet ps`
+- [CLI Entry Point](../cli-entry-point/overview.md) -- broader context for
+  all CLI commands including `fleet ps`

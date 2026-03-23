@@ -13,7 +13,9 @@ Before validation runs, the `fleet.yml` file is loaded and parsed by the
 [configuration module](../configuration/overview.md):
 
 1. `loadFleetConfig(filePath)` reads the YAML file from disk
-   (`src/config/loader.ts:9`).
+   (`src/config/loader.ts:9`). See
+   [Loading and Validation](../configuration/loading-and-validation.md) for
+   the full loading pipeline.
 2. The YAML is parsed with the `yaml` library (`src/config/loader.ts:16`).
 3. The parsed object is validated against the Zod schema
    `fleetConfigSchema` (`src/config/schema.ts:53-59`).
@@ -40,7 +42,7 @@ restriction exists because the stack name is used in multiple contexts:
   container names: `{stack}-{service}-1`
 - As part of the Caddy route identifier: `{stack}__{service}`
   (see `src/caddy/commands.ts:11-13`)
-- As a directory name on the remote server under the Fleet root:
+- As a directory name on the remote server under the [Fleet root](../fleet-root/resolution-flow.md):
   `{fleet_root}/stacks/{stack}/`
 
 Using only lowercase alphanumeric and hyphens ensures compatibility across all
@@ -51,7 +53,7 @@ these contexts without escaping or transformation.
 **Function**: `checkEnvConflict(config)` at `src/validation/fleet-checks.ts:4-25`
 
 **What it checks**: Whether both `env.entries` (inline key-value pairs) and
-`env.infisical` (Infisical secrets manager) are simultaneously configured with
+`env.infisical` ([Infisical secrets manager](../deploy/secrets-resolution.md)) are simultaneously configured with
 non-empty values.
 
 ### The three env configuration shapes
@@ -172,3 +174,11 @@ against all stacks recorded in the [server state file](../state-management/overv
   of the deploy pipeline.
 - [Project Init Utility Functions](../project-init/utility-functions.md) --
   `slugify()` uses the same `STACK_NAME_REGEX`.
+- [State Management Overview](../state-management/overview.md) -- server state
+  file that stores deployment metadata validated by these checks
+- [Environment Configuration Shapes](../env-secrets/env-configuration-shapes.md) --
+  the three env shapes validated by `checkEnvConflict`
+- [Secrets Resolution](../deploy/secrets-resolution.md) -- runtime behavior of
+  env resolution that the `ENV_CONFLICT` check guards against
+- [Configuration Loading and Validation](../configuration/loading-and-validation.md) --
+  how `fleet.yml` is loaded and parsed before these checks run

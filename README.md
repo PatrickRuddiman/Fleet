@@ -1,5 +1,7 @@
 # Fleet
 
+Fleet was built to simplify deploying multiple Docker Compose stacks to a single server where all stacks need to share ports 80 and 443. Fleet manages the ingress layer for you — a shared Caddy reverse proxy is automatically bootstrapped and configured so each stack gets its own domain and HTTPS without port conflicts.
+
 Fleet is a TypeScript CLI tool for deploying Docker Compose applications to remote servers over SSH. It uploads your Compose and environment files, starts containers, and configures a [Caddy](https://caddyserver.com) reverse proxy with automatic HTTPS — all from a single `fleet deploy` command driven by a declarative `fleet.yml` configuration file.
 
 Fleet targets developers and small teams who want code-defined deployments without the operational overhead of Kubernetes or a full container orchestration platform.

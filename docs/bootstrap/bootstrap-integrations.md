@@ -29,7 +29,8 @@ The code uses `docker compose` (Compose V2, the plugin form) rather than
 Compose V2 as a CLI plugin. Older installations that only have the standalone
 `docker-compose` binary will fail. See the
 [Docker Compose Integration](../process-status/docker-compose-integration.md)
-page for version requirements and JSON output format details.
+page for version requirements and JSON output format details. For the generated
+proxy compose file, see [Proxy Compose](../caddy-proxy/proxy-compose.md).
 
 **Minimum requirement:** Docker Engine 20.10 or later with the `compose` CLI
 plugin installed.
@@ -347,7 +348,10 @@ cat ~/.fleet/state.json | jq
 ### Recovering from a corrupted state file
 
 If the state file is corrupted (invalid JSON or invalid schema), `readState()`
-will throw an error. To recover:
+will throw an error. See the
+[State Management Overview](../state-management/overview.md) for validation
+details and the [Operations Guide](../state-management/operations-guide.md)
+for backup and recovery procedures. To recover:
 
 ```bash
 # Delete the state file -- falls back to defaults
@@ -490,7 +494,7 @@ See the [Fleet Root documentation](../fleet-root/overview.md) for more
 details. For the complete directory tree including stack directories, see
 [Directory Layout](../fleet-root/directory-layout.md).
 
-## Related Documentation
+## Related documentation
 
 - [Bootstrap Sequence](./bootstrap-sequence.md) -- step-by-step bootstrap
   process
@@ -511,5 +515,9 @@ details. For the complete directory tree including stack directories, see
   through bootstrap and deploy
 - [State Schema Reference](../state-management/schema-reference.md) -- state
   file field definitions
+- [Proxy Compose](../caddy-proxy/proxy-compose.md) -- Caddy container Docker
+  Compose configuration
 - [Deploy Sequence](../deploy/deploy-sequence.md) -- the full 17-step deploy
   pipeline
+- [Fleet Root Resolution Flow](../fleet-root/resolution-flow.md) -- detailed
+  step-by-step resolution logic

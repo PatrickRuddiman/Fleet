@@ -35,9 +35,9 @@ The three source files form a pipeline consumed by the
    digest, environment) using both local computation and remote SSH commands.
 2. **`deploy/classify.ts`** — Evaluates a priority-ordered decision tree to sort
    each service into deploy, restart, or skip buckets.
-3. **`deploy/infisical.ts`** — Bootstraps the Infisical secrets management CLI on
-   remote servers, ensuring secrets can be resolved before environment hashes are
-   computed.
+3. **`deploy/helpers.ts`** — Contains the `resolveSecrets()` function that
+   integrates with the [Infisical Node.js SDK](../env-secrets/infisical-integration.md) (`@infisical/sdk`) to fetch secrets
+   before environment hashes are computed.
 
 ```mermaid
 sequenceDiagram
@@ -75,7 +75,7 @@ sequenceDiagram
 |------|---------|
 | `src/deploy/classify.ts` | Decision tree that classifies services into action buckets |
 | `src/deploy/hashes.ts` | Hash computation for definitions, image digests, and env files |
-| `src/deploy/infisical.ts` | Infisical CLI bootstrap on remote servers |
+| `src/deploy/helpers.ts` | Contains Infisical SDK integration for secret resolution |
 
 ## Detailed Documentation
 
@@ -83,8 +83,8 @@ sequenceDiagram
   priority-ordered decision logic
 - [Hash Computation Pipeline](hash-computation.md) — How the three hash types are
   computed and compared
-- [Infisical CLI Bootstrap](../env-secrets/infisical-integration.md) — Secrets management CLI
-  installation on remote servers
+- [Infisical SDK Integration](integrations.md#infisical) — Secrets management
+  via the `@infisical/sdk` Node.js SDK
 - [Integrations Reference](integrations.md) — Docker Engine, Infisical, Cloudsmith,
   Node.js crypto, and SSH execution layer
 
@@ -96,7 +96,7 @@ sequenceDiagram
 | [Docker Compose Parsing](../compose/overview.md) | Upstream | Provides `ParsedComposeFile`, `ParsedService`, and `alwaysRedeploy()` |
 | [Server State Management](../state-management/overview.md) | Upstream | Provides `StackState` with stored per-service hashes |
 | [SSH Connection Layer](../ssh-connection/overview.md) | Upstream | Provides `ExecFn` for remote command execution |
-| [Environment and Secrets](../env-secrets/overview.md) | Peer | Shares `bootstrapInfisicalCli` for the `fleet env` command |
+| [Environment and Secrets](../env-secrets/overview.md) | Peer | Shares Infisical SDK integration for the `fleet env` command |
 | [Fleet Configuration](../configuration/overview.md) | Indirect | `config.env.infisical` gates whether Infisical bootstrap runs |
 
 ## Key Concepts
@@ -124,18 +124,20 @@ different categories of change:
 
 ### Force Mode
 
-When `fleet deploy --force` is used, classification is bypassed — all services
+When [`fleet deploy --force`](../cli-entry-point/deploy-command.md) is used, classification is bypassed — all services
 are placed in the `toDeploy` bucket. Hashes are still computed so that
-`state.json` records accurate values for the next deployment's comparison.
+[`state.json`](../state-management/schema-reference.md) records accurate values for the next deployment's comparison.
 
-## Related Documentation
+## Related documentation
 
+- [Service Change Detection Overview](change-detection-overview.md) -- How
+  classification, deployment, and state types work together as a system
 - [Classification Decision Tree](classification-decision-tree.md) -- The six-step
   priority-ordered decision logic
 - [Hash Computation Pipeline](hash-computation.md) -- How the three hash types are
   computed and compared
-- [Infisical CLI Bootstrap](../env-secrets/infisical-integration.md) -- Secrets
-  management CLI installation on remote servers
+- [Infisical SDK Integration](integrations.md#infisical) -- Secrets
+  management via the `@infisical/sdk` Node.js SDK
 - [Integrations Reference](integrations.md) -- Docker Engine, Infisical, Cloudsmith,
   Node.js crypto, and SSH execution layer
 - [Deployment Pipeline](../deployment-pipeline.md) -- How classification results
@@ -144,7 +146,8 @@ are placed in the `toDeploy` bucket. Hashes are still computed so that
   deployments
 - [Compose Query Functions](../compose/queries.md) -- `alwaysRedeploy()` and
   service enumeration
-- [State Management Overview](../state-management/overview.md) -- Where
-  `StackState` with per-service hashes is persisted
+- [State Management Overview](../state-management/overview.md) -- Classification
+  reads stored per-service hashes from `StackState` and writes updated hashes
+  after deployment
 - [CI/CD Integration](../ci-cd-integration.md) -- Using selective deployment in
   CI pipelines

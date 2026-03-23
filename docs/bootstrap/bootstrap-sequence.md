@@ -1,7 +1,7 @@
 # Bootstrap Sequence
 
 The bootstrap function in `src/bootstrap/bootstrap.ts` orchestrates an 8-step
-initialization sequence. Every step executes remotely through the `ExecFn`
+initialization sequence. Every step executes remotely through the [`ExecFn`](../ssh-connection/overview.md)
 abstraction -- the function runs in the local CLI process, but all commands
 execute on the target server via SSH (or locally if using a local exec adapter).
 
@@ -272,7 +272,7 @@ for the caller to persist). This means the deploy pipeline version will fail
 immediately if the Caddy Admin API is not ready when the config POST is
 attempted.
 
-## Related Documentation
+## Related documentation
 
 - [Bootstrap Integrations](./bootstrap-integrations.md) -- external dependencies
   used during bootstrap
@@ -291,5 +291,11 @@ attempted.
   read and persisted in Steps 1 and 8
 - [Deployment Pipeline](../deployment-pipeline.md) -- the simplified bootstrap
   performed during deployment
+- [Deploy Sequence](../deploy/deploy-sequence.md) -- the 17-step deploy
+  pipeline where bootstrap integrates as Step 5
 - [Deploy Command](../cli-entry-point/deploy-command.md) -- the CLI command
   that triggers bootstrap on first deploy
+- [Configuration Overview](../configuration/overview.md) -- how `fleet.yml`
+  provides the server connection and ACME email used during bootstrap
+- [Caddy Route Management](../deploy/caddy-route-management.md) -- how routes
+  are registered after bootstrap completes

@@ -115,9 +115,10 @@ interface to prompt the user for a stack name when `slugify()` fails:
 **What**: Container orchestration tool that defines multi-container applications
 in YAML.
 
-**How Fleet uses it**: Fleet reads Docker Compose files to auto-generate route
-configurations. The interaction is read-only -- Fleet never invokes the `docker
-compose` CLI during init.
+**How Fleet uses it**: Fleet reads Docker Compose files to auto-generate
+[route configurations](../configuration/schema-reference.md#routes). The
+interaction is read-only -- Fleet never invokes the `docker compose` CLI during
+init.
 
 - `detectComposeFile()` checks for `compose.yml` and `compose.yaml` on disk
 - `loadComposeFile()` parses the compose file's YAML and extracts service
@@ -179,7 +180,7 @@ obtain TLS certificates automatically.
 For more details on Fleet's Caddy integration, see the
 [Caddy proxy documentation](../caddy-proxy/).
 
-## Related Documentation
+## Related documentation
 
 - [Project Initialization Overview](overview.md) -- how these integrations fit
   into the init workflow
@@ -200,3 +201,7 @@ For more details on Fleet's Caddy integration, see the
   point that invokes the init subsystem
 - [Validation Overview](../validation/overview.md) -- how generated fleet.yml
   files are validated
+- [Validation Troubleshooting](../validation/troubleshooting.md) -- common
+  validation failures when editing generated fleet.yml files
+- [Environment Variables](../configuration/environment-variables.md) -- how to
+  configure env modes after init

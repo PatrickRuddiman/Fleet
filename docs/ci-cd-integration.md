@@ -30,7 +30,7 @@ Fleet's `env.file` mode uploads this file to the server, where Docker Compose pi
 ## Secrets Management
 
 Fleet supports three modes for managing environment variables and secrets,
-defined in the `env` field of `fleet.yml`. See
+defined in the `env` field of [`fleet.yml`](./configuration/overview.md). See
 [Environment Configuration Shapes](./env-secrets/env-configuration-shapes.md)
 for detailed format specifications.
 
@@ -295,7 +295,7 @@ jobs:
 4. **Write environment file** — Assembles `.env.production` from GitHub Actions secrets, including `IMAGE_TAG` set to the commit SHA. This file never enters version control.
 5. **Validate** — Runs `fleet validate` to catch configuration errors before any SSH connection is made. If validation fails, the pipeline stops here.
 6. **Write SSH key** — Writes the deploy key from GitHub Actions secrets to a temporary file with `600` permissions.
-7. **Deploy** — Runs `fleet deploy`, which connects to the server, uploads the compose file and environment, pulls the image, starts containers, configures Caddy routes, and runs health checks.
+7. **Deploy** — Runs `fleet deploy`, which connects to the server, uploads the compose file and environment, pulls the image, starts containers, configures Caddy routes, and runs [health checks](./deploy/health-checks.md).
 
 ## Out of Scope (Fleet v1 Limitations)
 
@@ -310,7 +310,7 @@ Fleet v1 is focused on single-server Docker Compose deployments behind Caddy. Th
 - **No `fleet.yml` inheritance or composition** — Each `fleet.yml` is a standalone, self-contained configuration file.
 - **No native CI platform integrations** — Fleet is a standard CLI tool that works in any environment where Node.js is available. It has no built-in plugins for GitHub Actions, GitLab CI, or other platforms.
 
-## Related Documentation
+## Related documentation
 
 - [Deploy Command](./cli-entry-point/deploy-command.md) -- the `fleet deploy`
   command used in CI pipelines
@@ -329,3 +329,9 @@ Fleet v1 is focused on single-server Docker Compose deployments behind Caddy. Th
 - [SSH Connection Lifecycle](./ssh-connection/connection-lifecycle.md) -- how
   connections are managed during CLI commands
 - [Deployment Pipeline](./deployment-pipeline.md) -- the full deploy workflow
+- [Configuration Overview](./configuration/overview.md) -- how `fleet.yml` is
+  structured and loaded
+- [Fleet Root Discovery](./fleet-root/overview.md) -- how Fleet locates the
+  project root containing `fleet.yml`
+- [Health Checks](./deploy/health-checks.md) -- post-deployment health check
+  verification

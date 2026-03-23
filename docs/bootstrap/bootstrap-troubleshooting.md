@@ -61,7 +61,8 @@ with Caddy.
 1. Fix the underlying issue (free ports, add resources, clear corrupted config)
 2. Remove the container if it exists: `docker rm -f fleet-proxy`
 3. Set `caddy_bootstrapped` to `false` in `~/.fleet/state.json` (or delete the
-   file)
+   file) -- see [State Lifecycle](../state-management/state-lifecycle.md) for
+   how bootstrap state flows
 4. Re-run the deploy
 
 ## Failed to start Caddy container
@@ -125,7 +126,9 @@ Failed to create proxy directory: command exited with code {N} — {stderr}
 
 **Source:** `src/bootstrap/bootstrap.ts:48-50`
 
-**What happened:** `mkdir -p {fleetRoot}/proxy` failed.
+**What happened:** `mkdir -p {fleetRoot}/proxy` failed. See
+[Directory Layout](../fleet-root/directory-layout.md) for the fleet root
+directory structure.
 
 **Common causes:**
 
@@ -247,7 +250,9 @@ detailed SSH setup and troubleshooting.
 command.
 
 **Cause:** The server has the legacy standalone `docker-compose` (V1) but not
-the modern `docker compose` (V2) plugin.
+the modern `docker compose` (V2) plugin. See also
+[Docker Compose Integration](../process-status/docker-compose-integration.md)
+for version requirements and JSON output format details.
 
 **Diagnosis:**
 
@@ -322,7 +327,7 @@ rate limits (50 certificates per registered domain per week). Avoid doing this
 frequently for the same domains. See [TLS and ACME](../caddy-proxy/tls-and-acme.md)
 for more on certificate management.
 
-## Related Documentation
+## Related documentation
 
 - [Bootstrap Sequence](./bootstrap-sequence.md) -- the full step-by-step
   bootstrap flow
@@ -348,3 +353,7 @@ for more on certificate management.
   deploy-time issues including proxy bootstrap failures
 - [Deploy Sequence](../deploy/deploy-sequence.md) -- the 17-step deploy
   pipeline that triggers bootstrap at Step 5
+- [Validation Troubleshooting](../validation/troubleshooting.md) -- pre-deploy
+  validation failures that may occur before bootstrap
+- [Fleet Root Directory Layout](../fleet-root/directory-layout.md) -- on-server
+  directory structure created during bootstrap

@@ -137,3 +137,7 @@ corruption, missing mount points) behind the fallback mechanism.
   executes commands on the remote host
 - [State Management Overview](../state-management/overview.md) — how
   `fleet_root` is persisted in `state.json`
+- [State Schema Reference](../state-management/schema-reference.md) — the
+  `fleet_root` field definition in the state schema
+- [Bootstrap Integrations](../bootstrap/bootstrap-integrations.md) — how the
+  fleet root directory is used during bootstrap

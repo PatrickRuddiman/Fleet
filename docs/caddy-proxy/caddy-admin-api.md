@@ -29,7 +29,7 @@ for the `ExecFn` interface).
 
 ### POST /load -- Bootstrap Configuration
 
-**Builder:** `buildBootstrapCommand()` (`src/caddy/commands.ts:15-48`)
+**Builder:** `buildBootstrapCommand()` (`src/caddy/commands.ts:19-52`)
 
 Replaces the entire Caddy configuration with an initial skeleton:
 
@@ -40,6 +40,7 @@ Replaces the entire Caddy configuration with an initial skeleton:
       "servers": {
         "fleet": {
           "listen": [":443", ":80"],
+          "protocols": ["h1", "h2"],
           "routes": []
         }
       }
@@ -69,25 +70,43 @@ details):
 }
 ```
 
-**Caddy behavior:** `POST /load` atomically replaces the entire running
-configuration. This is a safe operation during bootstrap because the routes
-array is empty. After the POST succeeds, Caddy immediately autosaves the
-config to the `caddy_config` volume.
+**Caddy behavior:** Per the
+[official Caddy API docs](https://caddyserver.com/docs/api#post-load),
+`POST /load`:
+
+- **Blocks** until the reload completes or fails.
+- **Incurs zero downtime** -- configuration changes are lightweight and
+  efficient; in-flight requests are not dropped.
+- **Rolls back automatically** if the new config fails for any reason. The old
+  config is restored without downtime.
+- **Autosaves** the new config to disk after a successful load, ensuring
+  durability via the `caddy_config` volume when used with `caddy run --resume`.
+- **Skips reload** if the new config is identical to the current one (unless
+  `Cache-Control: must-revalidate` is set).
+
+**Important:** `POST /load` is also used for **route registration and reload**
+(not just bootstrap). Both `registerRoutes()` and `reloadRoutes()` use
+`buildLoadConfigCommand()` to replace the full config atomically.
 
 **Consumers:**
-- `bootstrap()` in `src/bootstrap/bootstrap.ts:91-100` (step 7)
-- `bootstrapProxy()` in `src/deploy/helpers.ts:118-125`
+- `bootstrap()` in `src/bootstrap/bootstrap.ts:91-100` (step 7 -- initial
+  empty config)
+- `bootstrapProxy()` in `src/deploy/helpers.ts:118-125` (initial config)
+- `registerRoutes()` in `src/deploy/helpers.ts:438-442` (full config with
+  updated routes)
+- `reloadRoutes()` in `src/reload/reload.ts:71` (full config with all routes
+  from state)
 
 ### POST /config/apps/http/servers/fleet/routes -- Add Route
 
-**Builder:** `buildAddRouteCommand()` (`src/caddy/commands.ts:50-74`)
+**Builder:** `buildAddRouteCommand()` (`src/caddy/commands.ts:73-77`)
 
 Appends a new route to the `fleet` server's routes array. The route JSON
 includes an `@id` tag for later direct access:
 
 ```json
 {
-  "@id": "mystack__web",
+  "@id": "mystack__app-example-com",
   "match": [{ "host": ["app.example.com"] }],
   "handle": [{
     "handler": "reverse_proxy",
@@ -97,40 +116,42 @@ includes an `@id` tag for later direct access:
 ```
 
 **Caddy behavior:** POSTing to an array path appends the element. The `@id`
-field registers the route at `/id/mystack__web` for direct access. Adding a
-route with a hostname triggers Caddy's automatic HTTPS -- certificate
+field registers the route at `/id/mystack__app-example-com` for direct access.
+Adding a route with a hostname triggers Caddy's automatic HTTPS -- certificate
 provisioning begins immediately.
 
-**Consumers:**
-- `registerRoutes()` in `src/deploy/helpers.ts:377-388`
-- `reloadRoutes()` in `src/reload/reload.ts:53-61`
+**Current usage:** This builder is exported but **not currently called** in the
+codebase. Both `registerRoutes()` and `reloadRoutes()` use `POST /load` (full
+config replacement via `buildLoadConfigCommand()`) instead of appending
+individual routes. The builder remains available for potential future use in
+manual or interactive operations.
 
 ### DELETE /id/{caddy_id} -- Remove Route
 
-**Builder:** `buildRemoveRouteCommand()` (`src/caddy/commands.ts:76-78`)
+**Builder:** `buildRemoveRouteCommand()` (`src/caddy/commands.ts:89-91`)
 
 Removes a route by its `@id` tag. The URL pattern is:
 
 ```
-DELETE http://localhost:2019/id/{stackName}__{serviceName}
+DELETE http://localhost:2019/id/{stackName}__{domainSlug}
 ```
+
+For example: `DELETE http://localhost:2019/id/myapp__app-example-com`
 
 **Caddy behavior:** Deleting via `/id/{name}` removes the element from
 whatever array contains it -- no need to know the route's array index.
 Returns 404 if the ID does not exist.
 
-**Error handling:** Fleet always calls DELETE before POST (delete-then-add
-pattern) and silently ignores failures. This makes route registration
-idempotent -- whether the route exists or not, the sequence converges to the
-desired state.
+**Error handling:** Fleet silently ignores 404 errors from DELETE operations,
+making route removal idempotent.
 
 **Consumers:**
-- `registerRoutes()` in `src/deploy/helpers.ts:373-374`
-- `reloadRoutes()` in `src/reload/reload.ts:50`
+- `teardown` in `src/teardown/teardown.ts` -- removes individual stack
+  routes during [`fleet teardown`](../stack-lifecycle/teardown.md)
 
 ### GET /config/apps/http/servers/fleet/routes -- List Routes
 
-**Builder:** `buildListRoutesCommand()` (`src/caddy/commands.ts:80-82`)
+**Builder:** `buildListRoutesCommand()` (`src/caddy/commands.ts:93-95`)
 
 Returns the current routes array as JSON. Used by
 [`proxy-status`](../proxy-status-reload/proxy-status.md) to query live
@@ -141,7 +162,7 @@ state.
 
 ### GET /config/ -- Get Full Config
 
-**Builder:** `buildGetConfigCommand()` (`src/caddy/commands.ts:84-86`)
+**Builder:** `buildGetConfigCommand()` (`src/caddy/commands.ts:97-99`)
 
 Returns the entire Caddy configuration as JSON. Used for:
 
@@ -149,10 +170,41 @@ Returns the entire Caddy configuration as JSON. Used for:
    is accepting requests (`src/bootstrap/bootstrap.ts:73-74`).
 2. **Version extraction** -- `parseCaddyVersion()` reads the top-level
    `version` field (`src/proxy-status/proxy-status.ts:14-24`).
+3. **Config assembly** during route registration and reload -- the full config
+   is fetched, routes are merged in, and the result is posted back via
+   `POST /load` (`src/deploy/helpers.ts:420-429`,
+   `src/reload/reload.ts:53-62`).
 
-**Consumer:**
+**Consumers:**
 - `bootstrap()` in `src/bootstrap/bootstrap.ts:73-74` (health check)
 - `proxyStatus()` in `src/proxy-status/proxy-status.ts:209`
+- `registerRoutes()` in `src/deploy/helpers.ts:421` (read-modify-write)
+- `reloadRoutes()` in `src/reload/reload.ts:54` (read-modify-write)
+
+### PATCH /config/apps/http/servers/fleet/routes -- Replace Routes (Unused)
+
+**Builder:** `buildReplaceRoutesCommand()` (`src/caddy/commands.ts:79-82`)
+
+Generates a `PATCH` request that would replace the entire routes array. Per the
+[Caddy API docs](https://caddyserver.com/docs/api#patch-configpath), PATCH
+strictly replaces an existing value.
+
+**Status:** This builder is exported but **not called** anywhere in the
+codebase. Fleet uses `POST /load` for all route replacement operations, which
+provides stronger atomicity guarantees (automatic rollback on failure) compared
+to PATCH on a specific config path.
+
+### PUT /config/apps/http/servers/fleet/routes -- Create Routes (Unused)
+
+**Builder:** `buildCreateRoutesCommand()` (`src/caddy/commands.ts:84-87`)
+
+Generates a `PUT` request that would create or insert into the routes array.
+Per the [Caddy API docs](https://caddyserver.com/docs/api#put-configpath), PUT
+strictly creates a new value or inserts into an array.
+
+**Status:** This builder is exported but **not called** anywhere in the
+codebase. Like `buildReplaceRoutesCommand`, it exists as an alternative API
+operation that Fleet does not currently use.
 
 ## Constants
 
@@ -212,10 +264,34 @@ For simpler operations (delete, list, get-config), the command uses plain
 | Scenario | Behavior |
 |---|---|
 | Route DELETE returns 404 | Silently ignored -- the route may not exist yet |
-| Route POST fails | `registerRoutes()` throws with the stderr message |
+| `POST /load` fails (during deploy) | `registerRoutes()` throws with the stderr message |
+| `POST /load` fails (during reload) | All routes reported as failed in `ReloadResult`; Caddy auto-rolls back to previous config |
 | Bootstrap POST fails | `bootstrap()` throws, aborting the sequence |
 | Health probe fails | Retried up to 10 times at 3-second intervals (30s total) |
 | Container not running | `reloadRoutes()` throws with a user-facing message |
+
+## Concurrent Config Changes
+
+Per the [Caddy API documentation](https://caddyserver.com/docs/api#concurrent-config-changes),
+Caddy provides ACID guarantees for individual API requests, but multi-request
+changes without synchronization are subject to collisions. Caddy supports
+`Etag` and `If-Match` headers for optimistic concurrency control on
+`/config/` endpoints.
+
+Fleet does **not** use Etag-based concurrency control. Instead, it mitigates
+concurrent access through two mechanisms (see also the
+[State Management concurrency discussion](../state-management/overview.md#concurrency-and-locking)
+for related concerns at the state file level):
+
+1. **`POST /load` for mutations**: Both `registerRoutes()` and `reloadRoutes()`
+   use `POST /load` (full config replacement), which is a single atomic
+   request. This avoids the multi-request read-modify-write race condition on
+   `/config/` endpoints.
+2. **SSH serialization**: Fleet operations are typically initiated by a single
+   operator via the CLI. There is no built-in locking, so two concurrent
+   `fleet deploy` commands to the same server could produce a race condition
+   between the GET and POST /load calls. In practice, this is rare in Fleet's
+   target use case (single-operator deployments).
 
 ## Related documentation
 
@@ -232,4 +308,8 @@ For simpler operations (delete, list, get-config), the command uses plain
   registration during deployment
 - [Proxy Status Command](../proxy-status-reload/proxy-status.md) -- Live route
   reconciliation
+- [Route Reload](../proxy-status-reload/route-reload.md) -- How route reload
+  uses `POST /load` to reconcile state with Caddy
+- [State Management Overview](../state-management/overview.md) -- The state
+  file that drives route registration and reconciliation
 - [Official Caddy Admin API docs](https://caddyserver.com/docs/api)

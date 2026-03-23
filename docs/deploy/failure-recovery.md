@@ -48,7 +48,8 @@ does not modify the server).
 **Recovery**: Fix the validation error or host collision in `fleet.yml` and
 re-run `fleet deploy`. See also the
 [Validation Overview](../validation/overview.md) for details on pre-flight
-checks.
+checks and the [Validate Command](../validation/validate-command.md) for
+running checks independently.
 
 ### Step 5: Proxy Bootstrap
 
@@ -79,10 +80,9 @@ Leftover `.tmp` files are harmless and will be overwritten on the next attempt.
 ### Step 9: Secret Resolution
 
 **Server state**: The `.env` file may or may not have been written. If the
-Infisical CLI bootstrap failed, the CLI may be partially installed.
+Infisical SDK call failed, no secrets were fetched.
 
-**Recovery**: Re-run `fleet deploy`. The Infisical bootstrap checks for an
-existing installation before attempting to install. Secret resolution overwrites
+**Recovery**: Re-run `fleet deploy`. Secret resolution overwrites
 the `.env` file completely. See
 [Secrets Resolution](secrets-resolution.md) for details on how secrets are
 written to the server.
@@ -133,28 +133,29 @@ proxy.
 **Recovery**: Re-run `fleet deploy`. Network attachment is idempotent ("already
 connected" errors are silently ignored).
 
-### Step 14: Health Checks
+### Step 14: Route Registration
 
-**Server state**: All containers are running and attached to the network. Health
-check timeouts add warnings but do not fail the deploy. A true failure here
-would be an unexpected error from `docker exec`.
+**Server state**: All containers are running and attached to the network. The
+atomic `/load` approach means either the full route set was applied or it was
+not — there is no partial route state from this step.
+
+**Recovery**: Re-run `fleet deploy`. Route registration via `/load` is
+atomic and idempotent — it replaces the full Caddy config each time.
+Alternatively, use `fleet proxy reload` to re-register all routes from the
+current state. See [Proxy Status and Route Reload](../proxy-status-reload/overview.md)
+for details on how `fleet proxy reload` works.
+
+### Step 15: Health Checks
+
+**Server state**: All containers are running, attached to the network, and
+routes are registered. Health check timeouts add warnings but do not fail the
+deploy. A true failure here would be an unexpected error from `docker exec`.
 
 **Recovery**: If a health check timeout is the concern (warning, not failure),
-investigate the service logs with `fleet logs {stack}`. If `docker exec` itself
+investigate the service logs with
+[`fleet logs`](../process-status/logs-command.md) `{stack}`. If `docker exec` itself
 fails, the container may have crashed -- check `docker ps -a` and
 `docker logs {container}` on the remote server.
-
-### Step 15: Route Registration
-
-**Server state**: Some Caddy routes may have been registered, others not. The
-delete-then-post pattern means a route that was deleted but not re-added leaves
-that domain unreachable.
-
-**Recovery**: Re-run `fleet deploy`. Route registration performs delete-then-add
-for each route, so re-running produces the correct final state. Alternatively,
-use `fleet proxy reload` to re-register all routes from the current state.
-See [Proxy Status and Route Reload](../proxy-status-reload/overview.md) for
-details on how `fleet proxy reload` works.
 
 ### Step 16: State Write
 
@@ -178,8 +179,8 @@ stdout write error) is cosmetic.
 
 The most significant design limitation is the gap between container start
 (Step 12) and state write (Step 16). During steps 12-15, the server has running
-containers whose state is not recorded in `state.json`. If any step in this
-window fails:
+containers and registered routes whose state is not recorded in `state.json`.
+If any step in this window fails:
 
 1. Containers may be running with configurations that `state.json` does not
    reflect
@@ -190,6 +191,27 @@ window fails:
 There is no reconciliation logic that compares running containers against stored
 state. The `state.json` file is treated as the source of truth for the
 classification system, even when it may be stale.
+
+## Concurrent Deploy Safety
+
+There is **no file-level locking** on `state.json` or any other resource. If two
+`fleet deploy` commands run simultaneously against the same server (for the same
+or different stacks), they will both read the same state, make independent
+decisions, and write state sequentially — the last writer wins.
+
+**For the same stack**: The second deploy overwrites the first deploy's state.
+Container operations may interleave unpredictably (e.g., one deploy starts a
+container while the other restarts it). This is unsupported and may leave the
+server in an inconsistent state.
+
+**For different stacks**: Generally safe because each stack's state is stored
+under a separate key in `state.json`. However, the non-atomic read-modify-write
+pattern means the second writer may overwrite route registrations made by the
+first (since `registerRoutes()` rebuilds all routes from state). The risk is low
+but non-zero.
+
+**Recommendation**: Serialize deployments to the same server. In CI/CD, use a
+job-level mutex or deployment queue to prevent concurrent deploys.
 
 ## Manual Recovery Procedures
 
@@ -230,7 +252,7 @@ fleet deploy --force
 This forces a full bootstrap and deploy from scratch. All stacks will need to be
 redeployed because the state file no longer tracks any existing deployments.
 
-## Related Pages
+## Related documentation
 
 - [17-Step Deploy Sequence](deploy-sequence.md)
 - [Troubleshooting](troubleshooting.md) -- common issues, debugging commands,
@@ -244,3 +266,9 @@ redeployed because the state file no longer tracks any existing deployments.
   inspecting and repairing Caddy route state
 - [State Lifecycle](../state-management/state-lifecycle.md) -- how state
   flows through the deploy pipeline and the implications for failure recovery
+- [State Operations Guide](../state-management/operations-guide.md) -- backup,
+  recovery, and inspection procedures for the state file
+- [SSH Connection Lifecycle](../ssh-connection/connection-lifecycle.md) -- how
+  SSH connections are managed and cleaned up during deployment
+- [Caddy Route Management](./caddy-route-management.md) -- how routes are
+  registered and the atomic `/load` pattern that prevents partial route state

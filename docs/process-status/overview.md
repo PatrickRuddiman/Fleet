@@ -41,8 +41,8 @@ sequenceDiagram
 
 | Step | What happens | Failure behavior |
 |------|-------------|------------------|
-| Load config | Reads `fleet.yml` from the current working directory | Exits with error if file is missing or invalid |
-| SSH connect | Opens connection using `server` config from `fleet.yml` | Exits with error; no retry logic |
+| Load config | Reads `fleet.yml` from the current working directory (see [Configuration Loading](../configuration/loading-and-validation.md)) | Exits with error if file is missing or invalid |
+| SSH connect | Opens connection using `server` config from `fleet.yml` (see [SSH Connection](../ssh-connection/overview.md)) | Exits with error; no retry logic |
 | Read state | Runs `cat ~/.fleet/state.json` on the remote host | Returns empty default state if file is missing |
 | Validate stack | Checks that the requested stack name exists in state | Exits with error listing available stacks |
 | Docker command | Runs `docker compose -p <name> ps` or `logs` remotely | `ps`: falls back to route-based service list; `logs`: stream ends |
@@ -87,3 +87,7 @@ sequenceDiagram
   the deployments these commands inspect
 - [Stack Lifecycle Overview](../stack-lifecycle/overview.md) -- stop, restart,
   and teardown operations
+- [Caddy Proxy Overview](../caddy-proxy/overview.md) -- the reverse proxy whose
+  routes are displayed by `fleet ps`
+- [Proxy Status and Reload](../proxy-status-reload/overview.md) -- route
+  reconciliation between state and Caddy

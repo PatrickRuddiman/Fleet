@@ -30,8 +30,8 @@ This is how Docker Compose identifies which containers belong to which stack.
 `docker compose restart` sends SIGTERM then SIGSTART to the container process.
 It does **not** re-read the Compose file, rebuild images, or pick up
 environment variable changes. If you have modified `docker-compose.yml` or
-any `.env` files, you must run `fleet deploy` instead of `fleet restart` for
-the changes to take effect.
+any `.env` files, you must run [`fleet deploy`](../deploy/deploy-sequence.md)
+instead of `fleet restart` for the changes to take effect.
 
 This is a Docker Compose behavior, not a Fleet limitation. See the
 [Docker Compose restart reference](https://docs.docker.com/reference/cli/docker/compose/restart/)
@@ -323,7 +323,9 @@ mutated.
 The `writeState()` function (`src/state/state.ts:74-91`) uses a
 write-to-tmp-then-rename pattern to prevent corruption. For the complete state
 lifecycle across all operations, see
-[State Lifecycle](../state-management/state-lifecycle.md).
+[State Lifecycle](../state-management/state-lifecycle.md). For the atomic write
+protocol details, see
+[Atomic Write Protocol](../state-management/state-lifecycle.md#atomic-write-protocol).
 
 1. Serialize state to JSON with 2-space indentation.
 2. Write to `~/.fleet/state.json.tmp`.
@@ -444,6 +446,10 @@ server, even if the local config defines a different stack name.
   severity gradient
 - [Operational CLI Commands](../cli-commands/operational-commands.md) -- full
   CLI reference
+- [Deploy Troubleshooting](../deploy/troubleshooting.md) -- deployment failure
+  diagnosis including container and route issues
+- [Fleet Root Directory Layout](../fleet-root/directory-layout.md) -- on-server
+  directory structure for stacks and proxy
 - [Caddy Admin API Reference](../caddy-proxy/caddy-admin-api.md) -- complete
   Caddy API endpoint documentation
 - [Caddy Reverse Proxy Configuration](../caddy-proxy/) -- detailed Caddy proxy

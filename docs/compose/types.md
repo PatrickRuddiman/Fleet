@@ -1,13 +1,13 @@
 # Compose Type Definitions
 
-## What
+## What This Is
 
 The type definitions in [`src/compose/types.ts`](../../src/compose/types.ts)
 establish the data model that every consumer of the compose module works with.
 Four interfaces define the shape of parsed Docker Compose data as it flows
 through Fleet.
 
-## Why
+## Why These Types Exist
 
 Raw YAML parsing produces untyped JavaScript objects. These interfaces provide
 compile-time guarantees that downstream code accesses only the fields the parser
@@ -95,6 +95,8 @@ validation code can iterate without navigating the service hierarchy.
   showing how these types are consumed
 - [Service Classification and Hashing](../deploy/service-classification-and-hashing.md) --
   how `ParsedService` fields drive deployment decisions
+- [Hash Computation Pipeline](../deploy/hash-computation.md) -- how the 10
+  runtime-affecting `ParsedService` fields are hashed into definition hashes
 - [Compose Configuration Checks](../validation/compose-checks.md) -- validation
   checks that consume `HostPortBinding` and `NormalizedPort`
 - [Configuration Schema](../configuration/schema-reference.md) -- how

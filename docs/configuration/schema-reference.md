@@ -173,7 +173,8 @@ Source: `src/config/schema.ts:31-35`
 The health check configuration is consumed by the
 [deployment pipeline](../deployment-pipeline.md)
 (`src/deploy/helpers.ts:321-356`). During deployment, Fleet runs `curl`
-inside the service's Docker container to poll the health endpoint:
+inside the service's Docker container to poll the health endpoint (see
+[Health Checks](../deploy/health-checks.md) for full details):
 
 ```
 docker exec {stackName}-{serviceName}-1 \
@@ -188,7 +189,7 @@ allows services with slow startup times to complete their initialization
 while still alerting the operator.
 
 The health check can be disabled per-deployment using the `--no-health-check`
-CLI flag on `fleet deploy`.
+CLI flag on [`fleet deploy`](../cli-entry-point/deploy-command.md).
 
 ## `infisical` (nested under `env`)
 
@@ -225,7 +226,7 @@ schemas (`src/config/schema.ts:61-69`):
 | `HealthCheckConfig` | `healthCheckSchema` | Deploy pipeline |
 | `EnvFileConfig` | `envFileSchema` | Deploy, env modules |
 
-## Related Documentation
+## Related documentation
 
 - [Environment Variables and Secrets](./environment-variables.md) -- detailed
   explanation of the three `env` modes and `$VAR` expansion
@@ -243,6 +244,8 @@ schemas (`src/config/schema.ts:61-69`):
   `server` fields are used for SSH connections
 - [TLS and ACME Certificate Management](../caddy-proxy/tls-and-acme.md) --
   how `tls` and `acme_email` route fields affect certificate provisioning
+- [Health Checks](../deploy/health-checks.md) --
+  how health check configuration is consumed during deployment
 - [Deployment Pipeline](../deployment-pipeline.md) -- how the config is
   consumed during deployment
 - [Validation Troubleshooting](../validation/troubleshooting.md) -- common

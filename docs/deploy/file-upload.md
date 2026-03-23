@@ -103,13 +103,20 @@ Defined at `src/deploy/types.ts:28-32`:
 | `remotePath` | `string` | Absolute path on the remote server |
 | `permissions` | `string?` | Optional chmod value (e.g., `"0600"`) |
 
-## Related Pages
+## Related documentation
 
 - [Secrets Resolution](secrets-resolution.md) -- how file uploads are used for
   `.env` files across the three env strategies
-- [17-Step Deploy Sequence](deploy-sequence.md)
+- [17-Step Deploy Sequence](deploy-sequence.md) -- where file uploads occur
+  in the pipeline
 - [Deployment Pipeline Overview](../deployment-pipeline.md)
 - [Env Configuration Shapes](../env-secrets/env-configuration-shapes.md) --
   the three env shapes that trigger different upload methods
 - [SSH Connection API](../ssh-connection/connection-api.md) -- the `ExecFn`
   interface used to execute remote upload commands
+- [Fleet Root Directory Layout](../fleet-root/directory-layout.md) -- the
+  directory structure where uploaded files are stored
+- [State Management Overview](../state-management/overview.md) -- uses the
+  same atomic write pattern for `state.json`
+- [Security Model](../env-secrets/security-model.md) -- path traversal
+  protection and file permission details

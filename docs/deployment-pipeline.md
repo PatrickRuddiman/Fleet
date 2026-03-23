@@ -25,9 +25,12 @@ changed services), host collision detection, and atomic file uploads.
 
 The pipeline executes 17 sequential steps within a single `try/catch/finally`
 block. There is no per-step rollback mechanism: if a step fails, the pipeline
-exits and the SSH connection is closed in the `finally` block. The operator must
+exits and the SSH connection is closed in the `finally` block (see
+[Connection Lifecycle](ssh-connection/connection-lifecycle.md) for the cleanup
+pattern). The operator must
 then investigate the partial state on the server and either re-run the deploy or
-manually clean up.
+manually clean up. See
+[Failure Recovery](deploy/failure-recovery.md) for detailed recovery procedures.
 
 Four boolean flags control pipeline behavior:
 
@@ -77,11 +80,11 @@ Four boolean flags control pipeline behavior:
 | [Server State Management](state-management/overview.md) | Bidirectional | `readState` at Step 3, `writeState` at Step 16 |
 | [Fleet Root Directory](fleet-root/overview.md) | Upstream | `STACKS_DIR`, `resolveFleetRoot`, `PROXY_DIR` |
 | [Caddy Reverse Proxy](caddy-proxy/overview.md) | Downstream | Bootstrap, route add/remove commands |
-| [Service Classification and Hashing](deploy/service-classification-and-hashing.md) | Downstream | `classifyServices`, hash computation, Infisical bootstrap |
-| [Environment and Secrets](env-secrets/overview.md) | Downstream | `bootstrapInfisicalCli` for secret resolution |
+| [Service Classification and Hashing](deploy/service-classification-and-hashing.md) | Downstream | `classifyServices`, hash computation |
+| [Environment and Secrets](env-secrets/overview.md) | Downstream | Infisical SDK integration for secret resolution |
 | [CLI Entry Point](cli-entry-point/overview.md) | Consumer | `commands/deploy.ts` invokes the `deploy()` function |
 
-## Related Documentation
+## Related documentation
 
 - [Bootstrap Sequence](bootstrap/bootstrap-sequence.md) -- the bootstrap
   sub-sequence that initializes the Caddy proxy on the server
@@ -93,3 +96,11 @@ Four boolean flags control pipeline behavior:
   how Fleet determines which services need redeployment
 - [CI/CD Integration Guide](ci-cd-integration.md) -- how to run Fleet
   deployments from CI/CD pipelines
+- [Validate Command](validation/validate-command.md) -- pre-flight
+  configuration verification
+- [Operational Commands](cli-commands/operational-commands.md) -- runtime
+  commands (logs, ps, restart, stop, teardown) that complement deployment
+- [Stack Lifecycle Operations](stack-lifecycle/overview.md) -- managing
+  stacks after deployment
+- [State Operations Guide](state-management/operations-guide.md) -- inspecting
+  and recovering state after deployment

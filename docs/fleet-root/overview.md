@@ -16,8 +16,11 @@ SSH user is permitted to create.
 
 The module answers a single question at bootstrap time: **where on this server
 should Fleet store its files?** The answer is persisted so that subsequent
-operations (deploy, stop, teardown, reload) can locate Fleet's data without
-re-resolving.
+operations ([deploy](../deployment-pipeline.md),
+[stop](../stack-lifecycle/stop.md),
+[teardown](../stack-lifecycle/teardown.md),
+[reload](../proxy-status-reload/route-reload.md)) can locate Fleet's data
+without re-resolving.
 
 ## How it works
 
@@ -141,7 +144,7 @@ for future use cases such as:
 The function does not validate that the returned path still exists on the
 filesystem. See [Troubleshooting](./troubleshooting.md) for implications.
 
-## Related Documentation
+## Related documentation
 
 - [Resolution Flow](./resolution-flow.md) -- full decision flowchart for path
   resolution
@@ -161,3 +164,7 @@ filesystem. See [Troubleshooting](./troubleshooting.md) for implications.
   abstraction used for filesystem operations
 - [State Management Overview](../state-management/overview.md) -- stores the
   resolved `fleet_root` in `FleetState`
+- [State Operations Guide](../state-management/operations-guide.md) -- recovery
+  procedures when state or fleet root is corrupted
+- [Deploy Integrations](../deploy/integrations.md) -- Docker, SSH, and other
+  integrations that use the fleet root path

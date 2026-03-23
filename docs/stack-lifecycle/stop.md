@@ -15,7 +15,7 @@ The stop operation performs three actions in sequence:
 2. **Stops containers** -- runs `docker compose -p <stack> stop` to halt all
    containers
 3. **Removes the stack from state** -- deletes the stack entry from
-   `~/.fleet/state.json` and writes the updated file atomically
+   [`~/.fleet/state.json`](../state-management/schema-reference.md) and writes the updated file atomically
 
 **Source**: `src/stop/stop.ts`
 
@@ -156,11 +156,17 @@ This ensures the state file is never left in a partial-write state.
 - [Failure Modes and Recovery](./failure-modes.md) -- troubleshooting guide
 - [Operational CLI Commands](../cli-commands/operational-commands.md) -- `fleet stop`
   in the context of all operational commands
-- [Caddy Reverse Proxy Configuration](../caddy-proxy/) -- how routes are
+- [Caddy Reverse Proxy Configuration](../caddy-proxy/overview.md) -- how routes are
   managed via the admin API
-- [Server State Management](../state-management/) -- how state is structured
+- [Server State Management](../state-management/overview.md) -- how state is structured
   and persisted atomically
 - [State Schema Reference](../state-management/schema-reference.md) -- the
   `RouteState` and `caddy_id` fields used during route removal
 - [State Lifecycle](../state-management/state-lifecycle.md) -- how state
   transitions occur during stop and other lifecycle operations
+- [Proxy Status and Reload](../proxy-status-reload/overview.md) -- how to
+  inspect and repair Caddy routes after a partial stop failure
+- [Deploy Sequence](../deploy/deploy-sequence.md) -- how to re-deploy a stack
+  after stopping it
+- [CLI Entry Point](../cli-entry-point/overview.md) -- `fleet stop` in the
+  context of all Fleet CLI commands

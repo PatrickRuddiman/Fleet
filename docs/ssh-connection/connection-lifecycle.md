@@ -299,7 +299,7 @@ schema validation. However, the `Connection` interface itself provides
 no injection protection -- callers are responsible for safe command
 construction.
 
-## Cross-references
+## Related documentation
 
 - [overview.md](overview.md) -- Architecture and module structure
 - [authentication.md](authentication.md) -- SSH key and agent
@@ -312,9 +312,15 @@ construction.
   and reload commands that use SSH
 - [Logs command](../process-status/logs-command.md) -- Uses `streamExec`
   with the SIGINT-aware pattern
+- [Process Status Troubleshooting](../process-status/troubleshooting.md) --
+  SSH-related issues affecting `fleet logs` and `fleet ps`
 - [Stack lifecycle operations](../stack-lifecycle/overview.md) -- Restart,
   stop, and teardown commands use SSH
+- [Deploy Failure Recovery](../deploy/failure-recovery.md) -- How SSH
+  connection drops during deployment affect recovery
 - [CI/CD integration](../ci-cd-integration.md) -- SSH key handling in
   CI environments
 - [State management operations](../state-management/operations-guide.md)
   -- State read/write operations over SSH
+- [Fleet Root Overview](../fleet-root/overview.md) -- Fleet root resolution
+  uses the `ExecFn` abstraction

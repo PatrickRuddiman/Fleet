@@ -1,7 +1,7 @@
 # Server State Management
 
 Fleet persists all deployment metadata in a single JSON file on each target
-server. This module defines the data model, validation rules, and read/write
+server. This module defines the data model, [validation rules](../validation/fleet-checks.md), and read/write
 operations that form the single source of truth for every Fleet command.
 
 ## What it is
@@ -9,7 +9,7 @@ operations that form the single source of truth for every Fleet command.
 The state management layer is a file-based persistence system that tracks:
 
 - Which stacks are deployed and where their files live on disk
-- Which services are running within each stack, including their content hashes
+- Which services are running within each stack, including their [content hashes](../deploy/service-classification-and-hashing.md)
 - Which reverse proxy routes are registered with Caddy
 - Whether the Caddy reverse proxy has been bootstrapped
 - The fleet root directory path on the server
@@ -153,7 +153,9 @@ fields as `.optional()`:
 - `one_shot`
 
 These fields were added in later Fleet versions. Older state files that lack
-them will still pass Zod validation.
+them will still pass Zod validation. See the
+[State Data Model](../env-secrets/state-data-model.md) for how `env_hash`
+is used during environment change detection.
 
 **Important caveat**: The TypeScript interface in `src/state/types.ts:10-19`
 declares all `ServiceState` fields as required (non-optional). This means
@@ -162,11 +164,37 @@ the Zod-validated data may lack the optional ones. In practice, this
 discrepancy is handled at call sites -- for example,
 `src/deploy/classify.ts:56` uses optional chaining (`stackState.services?.[name]`)
 and `src/ps/ps.ts:150-172` has explicit fallback logic for pre-V1.2 state
-without per-service data.
+without per-service data. See
+[Service Classification and Hashing](../deploy/service-classification-and-hashing.md)
+for how the classification module consumes state.
 
 No formal migration mechanism exists for the state schema. When new fields are
 added, they are made optional in the Zod schema for backward compatibility and
 populated on the next deployment.
+
+### Unknown field stripping
+
+Zod's `z.object()` schemas use a **strip** strategy for unrecognized keys by
+default (as opposed to `z.strictObject()` which rejects them, or
+`z.looseObject()` which passes them through). This means that if a state file
+contains fields added by a newer version of Fleet, an older Fleet CLI will:
+
+1. Parse the file successfully (unknown fields do not cause validation errors).
+2. **Silently drop** the unrecognized fields from the parsed result.
+3. Write the stripped state back to disk on the next `writeState` call,
+   **permanently removing** the newer fields.
+
+This is a known limitation of the current design. In practice, it only
+matters if you downgrade Fleet after deploying with a newer version, and then
+run a command that writes state (deploy, stop, teardown). Read-only commands
+(ps, logs, env, proxy status) do not write state and are safe.
+
+To mitigate this risk:
+
+- Back up the state file before downgrading Fleet (see the
+  [operations guide](./operations-guide.md#backing-up-state)).
+- Avoid running write-capable commands with an older Fleet version after
+  deploying with a newer one.
 
 ## Cross-module dependencies
 
@@ -216,3 +244,19 @@ The module also re-exports `ExecFn` and `ExecResult` from the
   routes are compared against state
 - [Fleet Root Directory Layout](../fleet-root/directory-layout.md) -- on-server
   directory structure referenced by `fleet_root`
+- [State Data Model](../env-secrets/state-data-model.md) -- how environment
+  hashing and per-service state fields are structured
+- [Change Detection Overview](../deploy/change-detection-overview.md) -- how
+  stored hashes in state drive selective redeployment
+- [Service Classification and Hashing](../deploy/service-classification-and-hashing.md) --
+  how content hashes are computed and compared against state
+- [Compose Queries](../compose/queries.md) -- how service metadata is extracted
+  from Docker Compose files and stored in state
+- [Caddy Admin API](../caddy-proxy/caddy-admin-api.md) -- how Caddy route
+  state tracked in `state.json` is applied via the admin API
+- [Fleet Configuration Checks](../validation/fleet-checks.md) -- validation
+  rules for configuration that produces state
+- [Validation Codes Reference](../validation/validation-codes.md) -- catalog
+  of codes triggered by state-affecting configuration issues
+- [Security Model](../env-secrets/security-model.md) -- security implications
+  of the state file and secrets stored on the remote host

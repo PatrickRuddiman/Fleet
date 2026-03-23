@@ -1,10 +1,11 @@
 # Fleet — Architecture Overview
 
-Fleet is a TypeScript CLI tool that deploys Docker Compose applications to remote
-servers over SSH, provisions a Caddy reverse proxy with automatic HTTPS, and
-tracks what is deployed so it can make the smallest possible change on each run.
-It targets developers and small teams who want code-defined deployments without
-the operational overhead of Kubernetes or a full container orchestration platform.
+Fleet is a TypeScript CLI tool (`@pruddiman/fleet`) that deploys Docker Compose
+applications to remote servers over SSH, provisions a Caddy reverse proxy with
+automatic HTTPS, and tracks what is deployed so it can make the smallest possible
+change on each run. It targets developers and small teams who want code-defined
+deployments without the operational overhead of Kubernetes or a full container
+orchestration platform.
 
 Fleet exists because deploying a Docker Compose stack to a remote server still
 involves a manual, error-prone sequence: SSH in, upload files, pull images, start
@@ -47,7 +48,6 @@ graph TB
     subgraph "External Services"
         LetsEncrypt["Let's Encrypt / ACME<br/>(TLS certificates)"]
         Infisical["Infisical<br/>(secrets management)"]
-        Cloudsmith["Cloudsmith<br/>(Infisical CLI packages)"]
     end
 
     CLI -->|"SSH exec"| FleetRoot
@@ -65,8 +65,7 @@ graph TB
     StackContainers --- FleetNetwork
     AdminAPI --- CaddyContainer
 
-    CLI -.->|"$VAR expansion"| Infisical
-    CLI -.->|"apt-get install"| Cloudsmith
+    CLI -.->|"SDK fetch"| Infisical
 ```
 
 ### Key architectural properties
@@ -233,11 +232,16 @@ shapes, each resolving to a `.env` file on the server with `0600` permissions:
 |----------|-------------|-----------------|
 | Inline entries | `env: [{key: K, value: V}]` | Heredoc via SSH |
 | File reference | `env: {file: "./path"}` | Base64-encoded upload |
-| Infisical export | `env: {infisical: {...}}` | Remote CLI invocation |
+| Infisical | `env: {infisical: {...}}` | SDK fetch locally, base64 upload via SSH |
+
+The Infisical integration runs the `@infisical/sdk` on the operator's machine —
+the access token never reaches the remote server. All three modes produce a
+`.env` file with `0600` permissions on the server.
 
 The same `resolveSecrets()` function is used by both `fleet deploy` (step 9) and
-`fleet env` (standalone refresh). See [secrets resolution](deploy/secrets-resolution.md)
-and [environment and secrets management](env-secrets/overview.md) for details.
+`fleet env` (standalone secrets-only refresh). See
+[secrets resolution](deploy/secrets-resolution.md) and
+[environment and secrets management](env-secrets/overview.md) for details.
 
 ## Cross-cutting concerns
 
@@ -337,14 +341,19 @@ support. See [TLS and ACME](caddy-proxy/tls-and-acme.md).
 ### Secrets management
 
 Secrets enter the system through three paths (inline, file, Infisical), all
-resolved to a `.env` file with `0600` permissions. The Infisical CLI is
-bootstrapped on the remote server via a Cloudsmith-hosted Debian package — this
-assumes a Debian/Ubuntu target and requires outbound HTTPS to `dl.cloudsmith.io`.
+resolved to a `.env` file with `0600` permissions on the remote server. The
+Infisical integration uses the `@infisical/sdk` (v5+) locally on the operator's
+machine — it authenticates via `accessToken()`, fetches secrets from the
+Infisical API, formats them as `KEY=VALUE` pairs, and uploads the result via SSH.
+The access token never reaches the remote server.
 
-Infisical tokens support `$VAR` expansion from local environment variables,
-keeping sensitive values out of `fleet.yml`. However, there is no built-in token
-rotation, expiration monitoring, or audit logging. See
-[Infisical integration](env-secrets/infisical-integration.md).
+Infisical config fields support `$VAR` expansion from local environment
+variables, keeping sensitive tokens out of `fleet.yml` and enabling CI/CD
+integration. However, there is no built-in token rotation, expiration
+monitoring, or audit logging. There is also no fallback to a cached `.env` file
+if the Infisical API is unreachable — the deploy will fail. See
+[Infisical integration](env-secrets/infisical-integration.md) and
+[security model](env-secrets/security-model.md).
 
 ### Concurrency and locking
 
@@ -354,31 +363,139 @@ Concurrent `fleet deploy` invocations targeting the same server can produce
 corrupted state. Users must ensure serial execution (e.g., via CI/CD pipeline
 serialization).
 
+## State data model
+
+`~/.fleet/state.json` is the single source of truth. The diagram below shows the
+hierarchical structure and which modules operate on each level.
+
+```mermaid
+erDiagram
+    FleetState {
+        string fleet_root
+        boolean caddy_bootstrapped
+    }
+    StackState {
+        string path
+        string compose_file
+        string deployed_at
+        string env_hash
+    }
+    ServiceState {
+        string definition_hash
+        string deployed_at
+        string status
+        string image
+        string image_digest
+        string env_hash
+        string skipped_at
+        boolean one_shot
+    }
+    RouteState {
+        string host
+        string service
+        int port
+        string caddy_id
+    }
+
+    FleetState ||--o{ StackState : "stacks (by name)"
+    StackState ||--o{ ServiceState : "services (by name)"
+    StackState ||--o{ RouteState : "routes"
+```
+
+| Data level | Primary consumers | Operations |
+|------------|-------------------|------------|
+| `FleetState` | Bootstrap, deploy, all lifecycle commands | Read fleet root, check caddy status |
+| `StackState` | Deploy, stop, teardown, ps | Add/remove stacks, update timestamps |
+| `ServiceState` | Deploy, classify | Compare hashes, track deployment status |
+| `RouteState` | Deploy, teardown, proxy reload, proxy status | Register/remove Caddy routes by `caddy_id` |
+
+See [state management overview](state-management/overview.md),
+[schema reference](state-management/schema-reference.md), and
+[state lifecycle](state-management/state-lifecycle.md).
+
+## Remote server requirements
+
+Fleet assumes the target server has:
+
+- **Docker Engine** with the **Compose V2 plugin** (`docker compose`, not the
+  legacy `docker-compose`). Minimum version: Docker 20.10+.
+- An **SSH server** accepting key-based or agent-forwarded authentication.
+- **Outbound HTTPS** for ACME certificate issuance (ports 80 and 443 must be
+  open for the HTTP-01 challenge).
+
+Fleet does not install Docker or any other software on the remote server.
+
+## External dependencies
+
+| Dependency | Version | Purpose |
+|------------|---------|---------|
+| [Commander.js](https://github.com/tj/commander.js) | ^14.0.3 | CLI framework and argument parsing |
+| [node-ssh](https://www.npmjs.com/package/node-ssh) | ^13.2.1 | SSH connection and remote command execution |
+| [Zod](https://zod.dev) | ^4.3.6 | Runtime schema validation for config and state |
+| [yaml](https://www.npmjs.com/package/yaml) | ^2.8.2 | YAML 1.2 parsing for `fleet.yml` and Compose files |
+| [@infisical/sdk](https://infisical.com/docs/sdks/languages/node) | ^5.0.0 | Cloud secrets management integration |
+| [Caddy](https://caddyserver.com/docs/) | 2.x (alpine) | Reverse proxy with automatic HTTPS (remote) |
+| [Docker Compose V2](https://docs.docker.com/compose/) | 20.10+ | Container orchestration (remote) |
+
 ## Component index
 
 The table below maps Fleet's major subsystems to their source directories and
 documentation pages.
 
+### Core pipeline
+
 | Component | Source | Documentation |
 |-----------|--------|---------------|
-| CLI entry point | `src/cli.ts`, `src/commands/` | [CLI overview](cli-entry-point/overview.md) |
-| Operational commands (ps, logs, restart, stop, teardown) | `src/commands/`, `src/ps/`, `src/logs/`, `src/restart/`, `src/stop/`, `src/teardown/` | [Operational commands](cli-commands/operational-commands.md) |
-| Configuration schema and loading | `src/config/` | [Configuration](configuration/overview.md) |
-| Docker Compose parsing | `src/compose/` | [Compose parsing](compose/overview.md) |
-| Validation | `src/validation/` | [Validation](validation/overview.md) |
-| Deployment pipeline | `src/deploy/` | [Deployment pipeline](deployment-pipeline.md) |
-| Service classification and hashing | `src/deploy/classify.ts`, `src/deploy/hashes.ts` | [Classification](deploy/service-classification-and-hashing.md) |
-| Server bootstrap | `src/bootstrap/`, `src/deploy/helpers.ts:90` | [Bootstrap](bootstrap/server-bootstrap.md) |
-| Caddy proxy configuration | `src/caddy/`, `src/proxy/` | [Caddy proxy](caddy-proxy/overview.md) |
-| Proxy status and reload | `src/proxy-status/`, `src/reload/` | [Proxy status/reload](proxy-status-reload/overview.md) |
-| SSH connection layer | `src/ssh/` | [SSH connection](ssh-connection/overview.md) |
-| State management | `src/state/` | [State management](state-management/overview.md) |
-| Fleet root resolution | `src/fleet-root/` | [Fleet root](fleet-root/overview.md) |
-| Environment and secrets | `src/env/`, `src/deploy/infisical.ts` | [Env/secrets](env-secrets/overview.md) |
-| Stack lifecycle (restart, stop, teardown) | `src/restart/`, `src/stop/`, `src/teardown/` | [Stack lifecycle](stack-lifecycle/overview.md) |
-| Process status (ps, logs) | `src/ps/`, `src/logs/` | [Process status](process-status/overview.md) |
-| Project initialization | `src/init/` | [Project init](project-init/overview.md) |
+| CLI entry point | `src/cli.ts`, `src/commands/` | [Overview](cli-entry-point/overview.md), [Architecture](cli-entry-point/architecture.md) |
+| Deployment pipeline | `src/deploy/` | [Pipeline overview](deployment-pipeline.md), [Deploy sequence](deploy/deploy-sequence.md) |
+| Service classification | `src/deploy/classify.ts`, `src/deploy/hashes.ts` | [Change detection](deploy/change-detection-overview.md), [Decision tree](deploy/classification-decision-tree.md), [Hashing](deploy/hash-computation.md) |
+| Health checks | `src/deploy/helpers.ts` | [Health checks](deploy/health-checks.md) |
+| Secrets resolution | `src/deploy/helpers.ts` | [Secrets resolution](deploy/secrets-resolution.md) |
+| Failure recovery | — | [Recovery guide](deploy/failure-recovery.md) |
+
+### Infrastructure
+
+| Component | Source | Documentation |
+|-----------|--------|---------------|
+| Caddy proxy | `src/caddy/`, `src/proxy/` | [Overview](caddy-proxy/overview.md), [Admin API](caddy-proxy/caddy-admin-api.md), [TLS/ACME](caddy-proxy/tls-and-acme.md), [Compose](caddy-proxy/proxy-compose.md) |
+| Proxy status and reload | `src/proxy-status/`, `src/reload/` | [Overview](proxy-status-reload/overview.md), [Status](proxy-status-reload/proxy-status.md), [Reload](proxy-status-reload/route-reload.md) |
+| SSH connection | `src/ssh/` | [Overview](ssh-connection/overview.md), [Lifecycle](ssh-connection/connection-lifecycle.md), [Auth](ssh-connection/authentication.md) |
+| Server bootstrap | `src/bootstrap/` | [Overview](bootstrap/server-bootstrap.md), [Sequence](bootstrap/bootstrap-sequence.md), [Integrations](bootstrap/bootstrap-integrations.md) |
+| Fleet root | `src/fleet-root/` | [Overview](fleet-root/overview.md), [Layout](fleet-root/directory-layout.md), [Resolution](fleet-root/resolution-flow.md) |
+
+### Configuration and data
+
+| Component | Source | Documentation |
+|-----------|--------|---------------|
+| Configuration (`fleet.yml`) | `src/config/` | [Overview](configuration/overview.md), [Schema](configuration/schema-reference.md), [Loading](configuration/loading-and-validation.md), [Env vars](configuration/environment-variables.md) |
+| Compose parsing | `src/compose/` | [Overview](compose/overview.md), [Parser](compose/parser.md), [Queries](compose/queries.md) |
+| Validation | `src/validation/` | [Overview](validation/overview.md), [Fleet checks](validation/fleet-checks.md), [Compose checks](validation/compose-checks.md), [Codes](validation/validation-codes.md) |
+| State management | `src/state/` | [Overview](state-management/overview.md), [Schema](state-management/schema-reference.md), [Lifecycle](state-management/state-lifecycle.md), [Operations](state-management/operations-guide.md) |
+
+### Operations
+
+| Component | Source | Documentation |
+|-----------|--------|---------------|
+| Environment and secrets | `src/env/` | [Overview](env-secrets/overview.md), [Infisical](env-secrets/infisical-integration.md), [Security](env-secrets/security-model.md), [State model](env-secrets/state-data-model.md) |
+| Process inspection (ps, logs) | `src/ps/`, `src/logs/` | [Overview](process-status/overview.md), [ps](process-status/ps-command.md), [logs](process-status/logs-command.md) |
+| Stack lifecycle | `src/restart/`, `src/stop/`, `src/teardown/` | [Overview](stack-lifecycle/overview.md), [Stop](stack-lifecycle/stop.md), [Restart](stack-lifecycle/restart.md), [Teardown](stack-lifecycle/teardown.md) |
+| Project initialization | `src/init/` | [Overview](project-init/overview.md), [Compose detection](project-init/compose-file-detection.md), [YAML generation](project-init/fleet-yml-generation.md) |
 | CI/CD integration | — | [CI/CD guide](ci-cd-integration.md) |
+
+### Troubleshooting guides
+
+| Area | Guide |
+|------|-------|
+| Deployment | [Troubleshooting](deploy/troubleshooting.md) |
+| Caddy proxy | [Troubleshooting](caddy-proxy/troubleshooting.md) |
+| State file | [Operations guide](state-management/operations-guide.md) |
+| Validation | [Troubleshooting](validation/troubleshooting.md) |
+| Fleet root | [Troubleshooting](fleet-root/troubleshooting.md) |
+| Bootstrap | [Troubleshooting](bootstrap/bootstrap-troubleshooting.md) |
+| Environment | [Troubleshooting](env-secrets/troubleshooting.md) |
+| Process status | [Troubleshooting](process-status/troubleshooting.md) |
+| Stack lifecycle | [Failure modes](stack-lifecycle/failure-modes.md) |
+| Proxy reload | [Troubleshooting](proxy-status-reload/troubleshooting.md) |
 
 ## Dependency graph
 
@@ -461,3 +578,4 @@ graph TD
 
     State --> SSH
     FleetRoot --> SSH
+```
