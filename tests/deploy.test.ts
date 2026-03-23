@@ -19,6 +19,11 @@ import {
 } from "../src/deploy/helpers";
 import { deploy } from "../src/deploy/deploy";
 
+const mockInfisicalListSecrets = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ secrets: [] })
+);
+const mockInfisicalAccessToken = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+
 const { mockDeployStateRef, mockDeployConfigRef } = vi.hoisted(() => ({
   mockDeployStateRef: {
     value: {
@@ -94,6 +99,16 @@ vi.mock("../src/ssh", async () => {
     }),
   };
 });
+
+vi.mock("@infisical/sdk", () => ({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  InfisicalSDK: vi.fn(function () {
+    return {
+      auth: () => ({ accessToken: mockInfisicalAccessToken }),
+      secrets: () => ({ listSecrets: mockInfisicalListSecrets }),
+    };
+  }),
+}));
 
 // --- Test helpers ---
 
@@ -211,9 +226,9 @@ describe("bootstrapProxy", () => {
 
 describe("uploadFile", () => {
   it("should use atomic write pattern with .tmp and mv", async () => {
-    let capturedCommand = "";
+    const commands: string[] = [];
     const exec: ExecFn = async (cmd) => {
-      capturedCommand = cmd;
+      commands.push(cmd);
       return { stdout: "", stderr: "", code: 0 };
     };
 
@@ -222,18 +237,19 @@ describe("uploadFile", () => {
       remotePath: "/opt/fleet/stacks/myapp/compose.yml",
     });
 
-    expect(capturedCommand).toContain(".tmp");
-    expect(capturedCommand).toContain("mv");
-    expect(capturedCommand).toContain("hello world");
-    expect(capturedCommand).toContain("mkdir -p");
+    expect(commands.some((c) => c.includes(".tmp"))).toBe(true);
+    expect(commands.some((c) => c.includes("mv"))).toBe(true);
+    expect(commands.some((c) => c.includes("hello world"))).toBe(true);
+    expect(commands.some((c) => c.includes("mkdir -p"))).toBe(true);
   });
 
   it("should throw on non-zero exit code", async () => {
-    const exec = mockExec({
-      stdout: "",
-      stderr: "permission denied",
-      code: 1,
-    });
+    const exec: ExecFn = async (cmd) => {
+      if (cmd.includes("mv ")) {
+        return { stdout: "", stderr: "permission denied", code: 1 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
 
     await expect(
       uploadFile(exec, { content: "x", remotePath: "/some/path" })
@@ -366,10 +382,10 @@ describe("resolveSecrets", () => {
     await resolveSecrets(exec, config, "/opt/fleet/stacks/myapp");
 
     expect(commands.length).toBeGreaterThan(0);
-    expect(commands[0]).toContain("DB_HOST=localhost");
-    expect(commands[0]).toContain("DB_PORT=5432");
-    expect(commands[0]).toContain(".env");
-    expect(commands[0]).toContain("0600");
+    expect(commands.some((c) => c.includes("DB_HOST=localhost"))).toBe(true);
+    expect(commands.some((c) => c.includes("DB_PORT=5432"))).toBe(true);
+    expect(commands.some((c) => c.includes(".env"))).toBe(true);
+    expect(commands.some((c) => c.includes("0600"))).toBe(true);
   });
 
   it("should do nothing when config has no env and no infisical", async () => {
@@ -391,7 +407,14 @@ describe("resolveSecrets", () => {
     expect(commands).toHaveLength(0);
   });
 
-  it("should invoke infisical CLI and chmod when config has env.infisical", async () => {
+  it("should fetch secrets via SDK and upload .env file", async () => {
+    mockInfisicalListSecrets.mockResolvedValueOnce({
+      secrets: [
+        { secretKey: "API_KEY", secretValue: "abc123", id: "", workspaceId: "", environment: "", secretValueHidden: false, isRotatedSecret: false, tags: [], type: "shared", createdAt: "", updatedAt: "", version: 1 },
+        { secretKey: "DB_URL", secretValue: "postgres://localhost/db", id: "", workspaceId: "", environment: "", secretValueHidden: false, isRotatedSecret: false, tags: [], type: "shared", createdAt: "", updatedAt: "", version: 1 },
+      ],
+    });
+
     const config = {
       version: "1" as const,
       server: { host: "example.com", port: 22, user: "root" },
@@ -415,20 +438,24 @@ describe("resolveSecrets", () => {
 
     await resolveSecrets(exec, config, "/opt/fleet/stacks/myapp");
 
-    expect(commands).toHaveLength(2);
-    expect(commands[0]).toContain("infisical export");
-    expect(commands[0]).toContain("INFISICAL_TOKEN=my-secret-token");
-    expect(commands[0]).not.toContain("--token=my-secret-token");
-    expect(commands[0]).toContain("--projectId=proj-456");
-    expect(commands[0]).toContain("--env=production");
-    expect(commands[0]).toContain("--path=/backend");
-    expect(commands[0]).toContain("--format=dotenv");
-    expect(commands[0]).toContain("/opt/fleet/stacks/myapp/.env");
-    expect(commands[1]).toContain("chmod 0600");
-    expect(commands[1]).toContain("/opt/fleet/stacks/myapp/.env");
+    expect(mockInfisicalListSecrets).toHaveBeenCalledWith({
+      projectId: "proj-456",
+      environment: "production",
+      secretPath: "/backend",
+    });
+    const expectedBase64 = Buffer.from(
+      "API_KEY=abc123\nDB_URL=postgres://localhost/db\n"
+    ).toString("base64");
+    expect(commands.some((c) => c.includes(expectedBase64))).toBe(true);
+    expect(commands.some((c) => c.includes(".env"))).toBe(true);
+    expect(commands.some((c) => c.includes("0600"))).toBe(true);
   });
 
-  it("should throw when infisical CLI exits with non-zero code", async () => {
+  it("should propagate SDK errors when fetching secrets fails", async () => {
+    mockInfisicalListSecrets.mockRejectedValueOnce(
+      new Error("Infisical API error: 404 Folder not found")
+    );
+
     const config = {
       version: "1" as const,
       server: { host: "example.com", port: 22, user: "root" },
@@ -444,16 +471,11 @@ describe("resolveSecrets", () => {
       routes: [{ domain: "myapp.example.com", port: 3000, tls: true }],
     } as FleetConfig;
 
-    const exec: ExecFn = async (cmd) => {
-      if (cmd.includes("infisical export")) {
-        return { stdout: "", stderr: "authentication failed", code: 1 };
-      }
-      return { stdout: "", stderr: "", code: 0 };
-    };
+    const exec: ExecFn = async () => ({ stdout: "", stderr: "", code: 0 });
 
     await expect(
       resolveSecrets(exec, config, "/opt/fleet/stacks/myapp")
-    ).rejects.toThrow("Failed to export secrets via Infisical CLI");
+    ).rejects.toThrow("Infisical API error: 404 Folder not found");
   });
 
   describe("env.file", () => {

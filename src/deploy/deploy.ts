@@ -19,7 +19,6 @@ import {
   configHasSecrets,
   pullSelectiveImages,
 } from "./helpers";
-import { bootstrapInfisicalCli } from "./infisical";
 import { classifyServices } from "./classify";
 import type { CandidateHashes, ServiceClassification } from "./classify";
 import { computeDefinitionHash, computeEnvHash, getImageDigest } from "./hashes";
@@ -143,10 +142,6 @@ export async function deploy(options: DeployOptions): Promise<void> {
 
     // Step 9: Resolve and upload secrets
     console.log("Step 9: Resolving secrets...");
-    if (config.env && !Array.isArray(config.env) && "infisical" in config.env && config.env.infisical) {
-      console.log("  Bootstrapping Infisical CLI...");
-      await bootstrapInfisicalCli(exec);
-    }
     await resolveSecrets(exec, config, stackDir, path.dirname(configPath));
 
     // Step 10: Classify services for selective deploy

@@ -3,8 +3,6 @@ import { loadFleetConfig } from "../config";
 import { createConnection, Connection } from "../ssh";
 import { readState, getStack } from "../state";
 import { resolveSecrets, configHasSecrets } from "../deploy";
-import { bootstrapInfisicalCli } from "../deploy/infisical";
-
 export async function pushEnv(): Promise<void> {
   let connection: Connection | null = null;
 
@@ -41,13 +39,7 @@ export async function pushEnv(): Promise<void> {
 
     const stackDir = stackState.path;
 
-    // Step 6: Bootstrap Infisical CLI if needed
-    if (config.env && !Array.isArray(config.env) && "infisical" in config.env && config.env.infisical) {
-      console.log("  Bootstrapping Infisical CLI...");
-      await bootstrapInfisicalCli(exec);
-    }
-
-    // Step 7: Resolve and upload secrets
+    // Step 6: Resolve and upload secrets
     console.log("Step 5: Resolving and pushing secrets...");
     await resolveSecrets(exec, config, stackDir, path.dirname(configPath));
 

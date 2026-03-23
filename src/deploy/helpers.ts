@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { InfisicalSDK } from "@infisical/sdk";
 import { ExecFn } from "../ssh";
 import { FleetState, RouteState } from "../state";
 import { FleetConfig, RouteConfig } from "../config";
@@ -277,23 +278,22 @@ export async function resolveSecrets(
   if (config.env.infisical) {
     const { token, project_id, environment, path: secretPath } = config.env.infisical;
 
-    // Pass the token via environment variable to avoid exposing it in the process list (ps aux)
-    const exportCmd = `INFISICAL_TOKEN=${token} infisical export --projectId=${project_id} --env=${environment} --path=${secretPath} --format=dotenv > ${stackDir}/.env`;
-    const result = await exec(exportCmd);
+    const client = new InfisicalSDK();
+    await client.auth().accessToken(token);
 
-    if (result.code !== 0) {
-      throw new Error(
-        `Failed to export secrets via Infisical CLI: ${result.stderr}`
-      );
-    }
+    const { secrets } = await client.secrets().listSecrets({
+      projectId: project_id,
+      environment,
+      secretPath,
+    });
 
-    // Set file permissions to 0600
-    const chmodResult = await exec(`chmod 0600 ${stackDir}/.env`);
-    if (chmodResult.code !== 0) {
-      throw new Error(
-        `Failed to set .env file permissions: ${chmodResult.stderr}`
-      );
-    }
+    const envContent = secrets.map((s) => `${s.secretKey}=${s.secretValue}`).join("\n") + "\n";
+
+    await uploadFileBase64(exec, {
+      content: envContent,
+      remotePath: `${stackDir}/.env`,
+      permissions: "0600",
+    });
   }
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@pruddiman/fleet",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A TypeScript CLI tool for managing deployments",
   "files": [
     "dist/",
@@ -36,17 +36,18 @@
     "build:binaries": "pkg . --out-path releases"
   },
   "dependencies": {
+    "@infisical/sdk": "^5.0.0",
     "commander": "^14.0.3",
+    "node-ssh": "^13.2.1",
     "yaml": "^2.8.2",
-    "zod": "^4.3.6",
-    "node-ssh": "^13.2.1"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "ts-node": "^10.9.2",
-    "vitest": "^4.1.0",
     "@types/node": "^25.5.0",
-    "@yao-pkg/pkg": "^5.15.2"
+    "@yao-pkg/pkg": "^5.15.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
   },
   "publishConfig": {
     "access": "public"

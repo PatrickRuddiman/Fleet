@@ -6,7 +6,7 @@ describe("CLI", () => {
     const program = createProgram();
 
     expect(program.name()).toBe("fleet");
-    expect(program.version()).toBe("0.1.0");
+    expect(program.version()).toBe("0.1.5");
     expect(program.description()).toBe(
       "A TypeScript CLI tool for managing deployments"
     );
@@ -26,7 +26,8 @@ describe("CLI", () => {
     expect(commandNames).toContain("teardown");
     expect(commandNames).toContain("env");
     expect(commandNames).toContain("proxy");
-    expect(commandNames).toHaveLength(10);
+    expect(commandNames).toContain("version");
+    expect(commandNames).toHaveLength(11);
   });
 
   it("should register proxy subcommands", () => {

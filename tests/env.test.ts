@@ -70,10 +70,6 @@ vi.mock("../src/deploy", () => ({
   },
 }));
 
-vi.mock("../src/deploy/infisical", () => ({
-  bootstrapInfisicalCli: async () => {},
-}));
-
 // Import pushEnv after mock declarations
 import { pushEnv } from "../src/env";
 
