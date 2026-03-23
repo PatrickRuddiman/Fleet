@@ -8,8 +8,12 @@ import {
   CADDY_API_ID_PATH,
 } from "./constants";
 
-export function buildCaddyId(stackName: string, serviceName: string): string {
-  return `${stackName}__${serviceName}`;
+export function buildCaddyId(stackName: string, domain: string): string {
+  const slug = domain
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+  return `${stackName}__${slug}`;
 }
 
 export function buildBootstrapCommand(options?: BootstrapOptions): string {
@@ -44,12 +48,16 @@ export function buildBootstrapCommand(options?: BootstrapOptions): string {
     };
   }
 
+  return buildLoadConfigCommand(config);
+}
+
+export function buildLoadConfigCommand(config: object): string {
   const json = JSON.stringify(config, null, 2);
   return `docker exec -i ${CADDY_CONTAINER_NAME} sh -c 'curl -s -f -X POST -H "Content-Type: application/json" -d @- ${CADDY_ADMIN_URL}${CADDY_API_LOAD_PATH}' << 'FLEET_JSON'\n${json}\nFLEET_JSON`;
 }
 
 export function buildRoute(options: AddRouteOptions): object {
-  const caddyId = buildCaddyId(options.stackName, options.serviceName);
+  const caddyId = buildCaddyId(options.stackName, options.domain);
   return {
     "@id": caddyId,
     match: [{ host: [options.domain] }],

@@ -28,6 +28,20 @@ vi.mock("../src/config", () => ({
   loadFleetConfig: () => mockConfigRef.value,
 }));
 
+const fullCaddyConfig = JSON.stringify({
+  apps: {
+    http: {
+      servers: {
+        fleet: {
+          listen: [":443", ":80"],
+          protocols: ["h1", "h2"],
+          routes: [],
+        },
+      },
+    },
+  },
+});
+
 vi.mock("../src/ssh", () => ({
   createConnection: async () => ({
     exec: async (cmd: string) => {
@@ -37,6 +51,10 @@ vi.mock("../src/ssh", () => ({
           return { stdout: "", stderr: "No such container", code: 1 };
         }
         return { stdout: "true", stderr: "", code: 0 };
+      }
+      // GET /config/ — return full config
+      if (!cmd.includes("-X") && cmd.includes("/config/")) {
+        return { stdout: fullCaddyConfig, stderr: "", code: 0 };
       }
       return { stdout: "", stderr: "", code: 0 };
     },
@@ -140,62 +158,76 @@ function multiStackState(): FleetState {
 
 describe("reloadRoutes", () => {
   it("should handle empty state with no stacks", async () => {
-    const mockExec: ExecFn = vi
-      .fn()
-      .mockResolvedValue({ stdout: "true", stderr: "", code: 0 });
+    const mockExec: ExecFn = vi.fn().mockImplementation((cmd: string) => {
+      if (cmd.includes("docker inspect")) {
+        return Promise.resolve({ stdout: "true", stderr: "", code: 0 });
+      }
+      if (!cmd.includes("-X") && cmd.includes("/config/")) {
+        return Promise.resolve({ stdout: fullCaddyConfig, stderr: "", code: 0 });
+      }
+      return Promise.resolve({ stdout: "", stderr: "", code: 0 });
+    });
 
     const result = await reloadRoutes(mockExec, emptyState());
 
-    // Only the docker inspect check should have been called
-    expect(mockExec).toHaveBeenCalledTimes(1);
-    expect(mockExec).toHaveBeenCalledWith(
-      expect.stringContaining("docker inspect")
-    );
+    // inspect + GET /config/ + POST /load
+    expect(mockExec).toHaveBeenCalledTimes(3);
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("docker inspect"));
     expect(result.total).toBe(0);
     expect(result.succeeded).toBe(0);
     expect(result.failed).toHaveLength(0);
   });
 
-  it("should reload a single route with a single PATCH", async () => {
+  it("should reload a single route via GET + POST /load", async () => {
     const mockExec: ExecFn = vi.fn().mockImplementation((cmd: string) => {
       if (cmd.includes("docker inspect")) {
         return Promise.resolve({ stdout: "true", stderr: "", code: 0 });
+      }
+      if (!cmd.includes("-X") && cmd.includes("/config/")) {
+        return Promise.resolve({ stdout: fullCaddyConfig, stderr: "", code: 0 });
       }
       return Promise.resolve({ stdout: "", stderr: "", code: 0 });
     });
 
     const result = await reloadRoutes(mockExec, singleStackState());
 
-    // Verify no DELETE commands — replaced by single PATCH
+    // Verify no DELETE or PATCH commands
     expect(mockExec).not.toHaveBeenCalledWith(expect.stringContaining("DELETE"));
+    expect(mockExec).not.toHaveBeenCalledWith(expect.stringContaining("-X PATCH"));
 
-    // Verify single PATCH command with correct upstream host and domain
-    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("-X PATCH"));
+    // Verify GET /config/ then POST /load with correct content
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("/config/"));
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("-X POST"));
+    expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("/load"));
     expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("myapp-web-1:3000"));
     expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("myapp.example.com"));
 
-    // 1 inspect + 1 PATCH = 2 calls total
-    expect(mockExec).toHaveBeenCalledTimes(2);
+    // 1 inspect + 1 GET + 1 POST /load = 3 calls total
+    expect(mockExec).toHaveBeenCalledTimes(3);
     expect(result.total).toBe(1);
     expect(result.succeeded).toBe(1);
     expect(result.failed).toHaveLength(0);
   });
 
-  it("should reload multiple routes across multiple stacks in a single PATCH", async () => {
+  it("should reload multiple routes across multiple stacks in a single POST /load", async () => {
     const mockExec: ExecFn = vi.fn().mockImplementation((cmd: string) => {
       if (cmd.includes("docker inspect")) {
         return Promise.resolve({ stdout: "true", stderr: "", code: 0 });
+      }
+      if (!cmd.includes("-X") && cmd.includes("/config/")) {
+        return Promise.resolve({ stdout: fullCaddyConfig, stderr: "", code: 0 });
       }
       return Promise.resolve({ stdout: "", stderr: "", code: 0 });
     });
 
     const result = await reloadRoutes(mockExec, multiStackState());
 
-    // 1 inspect + 1 PATCH (all routes) = 2 calls total
-    expect(mockExec).toHaveBeenCalledTimes(2);
+    // 1 inspect + 1 GET + 1 POST /load = 3 calls total
+    expect(mockExec).toHaveBeenCalledTimes(3);
     expect(mockExec).not.toHaveBeenCalledWith(expect.stringContaining("DELETE"));
+    expect(mockExec).not.toHaveBeenCalledWith(expect.stringContaining("-X PATCH"));
 
-    // Single PUT contains all upstream hosts
+    // POST /load contains all upstream hosts
     expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("myapp-web-1:3000"));
     expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("myapp-api-1:4000"));
     expect(mockExec).toHaveBeenCalledWith(expect.stringContaining("backend-server-1:8080"));
@@ -205,13 +237,16 @@ describe("reloadRoutes", () => {
     expect(result.failed).toHaveLength(0);
   });
 
-  it("should report all routes as failed when the PUT fails", async () => {
+  it("should report all routes as failed when POST /load fails", async () => {
     const mockExec: ExecFn = vi.fn().mockImplementation((cmd: string) => {
       if (cmd.includes("docker inspect")) {
         return Promise.resolve({ stdout: "true", stderr: "", code: 0 });
       }
-      // PUT fails
-      if (cmd.includes("-X PATCH")) {
+      if (!cmd.includes("-X") && cmd.includes("/config/")) {
+        return Promise.resolve({ stdout: fullCaddyConfig, stderr: "", code: 0 });
+      }
+      // POST /load fails
+      if (cmd.includes("-X POST") && cmd.includes("/load")) {
         return Promise.resolve({ stdout: "", stderr: "connection refused", code: 1 });
       }
       return Promise.resolve({ stdout: "", stderr: "", code: 0 });
@@ -270,15 +305,19 @@ describe("reloadProxy", () => {
     expect(mockExecCommandsRef.value).toEqual(
       expect.arrayContaining([expect.stringContaining("docker inspect")])
     );
-    // Verify PUT command with the route
+    // Verify GET /config/ then POST /load with the route
     expect(mockExecCommandsRef.value).toEqual(
-      expect.arrayContaining([expect.stringContaining("-X PATCH")])
+      expect.arrayContaining([expect.stringContaining("/config/")])
+    );
+    expect(mockExecCommandsRef.value).toEqual(
+      expect.arrayContaining([expect.stringContaining("-X POST")])
     );
     expect(mockExecCommandsRef.value).toEqual(
       expect.arrayContaining([expect.stringContaining("myapp.example.com")])
     );
-    // No DELETE commands
+    // No DELETE or PATCH commands
     expect(mockExecCommandsRef.value.some((cmd) => cmd.includes("DELETE"))).toBe(false);
+    expect(mockExecCommandsRef.value.some((cmd) => cmd.includes("-X PATCH"))).toBe(false);
   });
 
   it("should successfully reload routes for multiple stacks", async () => {
@@ -289,8 +328,9 @@ describe("reloadProxy", () => {
 
     expect(mockProcessExitCodeRef.value).toBeUndefined();
 
-    // Single PUT contains all upstream hosts (no DELETE commands)
+    // Single POST /load contains all upstream hosts (no DELETE or PATCH commands)
     expect(mockExecCommandsRef.value.some((cmd) => cmd.includes("DELETE"))).toBe(false);
+    expect(mockExecCommandsRef.value.some((cmd) => cmd.includes("-X PATCH"))).toBe(false);
     expect(mockExecCommandsRef.value).toEqual(
       expect.arrayContaining([
         expect.stringContaining("myapp-web-1:3000"),
@@ -307,11 +347,13 @@ describe("reloadProxy", () => {
     await reloadProxy();
 
     expect(mockProcessExitCodeRef.value).toBeUndefined();
-    // Only the docker inspect command should be issued (no route commands)
-    const routeCommands = mockExecCommandsRef.value.filter(
-      (cmd) => !cmd.includes("docker inspect")
+    // Inspect + GET /config/ + POST /load (even with empty routes, config is updated)
+    expect(mockExecCommandsRef.value).toEqual(
+      expect.arrayContaining([expect.stringContaining("docker inspect")])
     );
-    expect(routeCommands).toHaveLength(0);
+    expect(mockExecCommandsRef.value).toEqual(
+      expect.arrayContaining([expect.stringContaining("/load")])
+    );
   });
 
   it("should exit with error when Caddy container is not running", async () => {
@@ -350,15 +392,17 @@ describe("reloadProxy", () => {
 
     await reloadProxy();
 
-    // No DELETE or POST commands — replaced by single PATCH
+    // No DELETE or PATCH commands — uses GET /config/ + POST /load
     expect(mockExecCommandsRef.value.some((cmd) => cmd.includes("DELETE"))).toBe(false);
-    expect(mockExecCommandsRef.value.some((cmd) => cmd.includes("-X POST"))).toBe(false);
+    expect(mockExecCommandsRef.value.some((cmd) => cmd.includes("-X PATCH"))).toBe(false);
 
-    // Verify PUT command format
-    const putCmd = mockExecCommandsRef.value.find((cmd) => cmd.includes("-X PATCH"));
-    expect(putCmd).toBeDefined();
-    expect(putCmd).toContain("docker exec -i fleet-proxy");
-    expect(putCmd).toContain("myapp.example.com");
-    expect(putCmd).toContain("myapp-web-1:3000");
+    // Verify POST /load command format
+    const loadCmd = mockExecCommandsRef.value.find(
+      (cmd) => cmd.includes("-X POST") && cmd.includes("/load")
+    );
+    expect(loadCmd).toBeDefined();
+    expect(loadCmd).toContain("docker exec -i fleet-proxy");
+    expect(loadCmd).toContain("myapp.example.com");
+    expect(loadCmd).toContain("myapp-web-1:3000");
   });
 });

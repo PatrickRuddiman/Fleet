@@ -4,7 +4,8 @@ import { createConnection, Connection, ExecFn } from "../ssh";
 import { readState, FleetState } from "../state";
 import {
   buildRoute,
-  buildReplaceRoutesCommand,
+  buildLoadConfigCommand,
+  buildGetConfigCommand,
   CADDY_CONTAINER_NAME,
 } from "../caddy";
 
@@ -32,7 +33,7 @@ export async function reloadRoutes(
     );
   }
 
-  // Step 2: Collect all routes from state and build route objects
+  // Step 2: Build all routes from state (idempotent source of truth)
   const items: { stackName: string; route: { host: string; service: string; port: number; caddy_id: string } }[] = [];
   const allRoutes: object[] = [];
 
@@ -49,24 +50,39 @@ export async function reloadRoutes(
     }
   }
 
-  // Step 3: Replace all routes in a single PUT — one reload, no TLS race conditions
-  const failed: { host: string; stackName: string; error: string }[] = [];
-
-  if (allRoutes.length > 0) {
-    const replaceResult = await exec(buildReplaceRoutesCommand(allRoutes));
-    if (replaceResult.code !== 0) {
-      for (const { stackName, route } of items) {
-        failed.push({ host: route.host, stackName, error: replaceResult.stderr });
-      }
-      return { total: items.length, succeeded: 0, failed };
+  // Step 3: GET full Caddy config to preserve TLS and server settings
+  const configResult = await exec(buildGetConfigCommand());
+  let fullConfig: any = {};
+  if (configResult.code === 0 && configResult.stdout.trim()) {
+    try {
+      fullConfig = JSON.parse(configResult.stdout);
+    } catch {
+      fullConfig = {};
     }
   }
 
-  // Step 4: Return summary
+  fullConfig.apps ??= {};
+  fullConfig.apps.http ??= {};
+  fullConfig.apps.http.servers ??= {};
+  fullConfig.apps.http.servers.fleet ??= {};
+  fullConfig.apps.http.servers.fleet.routes = allRoutes;
+
+  // Step 4: POST /load — atomic full replacement, @id index rebuilt from scratch
+  const loadResult = await exec(buildLoadConfigCommand(fullConfig));
+  if (loadResult.code !== 0) {
+    const failed = items.map(({ stackName, route }) => ({
+      host: route.host,
+      stackName,
+      error: loadResult.stderr,
+    }));
+    return { total: items.length, succeeded: 0, failed };
+  }
+
+  // Step 5: Return summary
   return {
     total: items.length,
     succeeded: items.length,
-    failed,
+    failed: [],
   };
 }
 

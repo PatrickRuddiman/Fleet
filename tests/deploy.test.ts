@@ -668,81 +668,102 @@ describe("checkHealth", () => {
   });
 });
 
+const emptyState = (): FleetState => ({
+  fleet_root: "/opt/fleet",
+  caddy_bootstrapped: true,
+  stacks: {},
+});
+
+const fullCaddyConfig = JSON.stringify({
+  apps: { http: { servers: { fleet: { listen: [":443", ":80"], protocols: ["h1", "h2"], routes: [] } } } },
+});
+
 describe("registerRoutes", () => {
-  it("should use PATCH when routes array already exists", async () => {
+  it("should GET full config then POST /load with new routes", async () => {
     const commands: string[] = [];
     const exec: ExecFn = async (cmd) => {
       commands.push(cmd);
-      // GET succeeds with empty array
-      return { stdout: cmd.includes("-X") ? "" : "[]", stderr: "", code: 0 };
+      return { stdout: cmd.includes("-X") ? "" : fullCaddyConfig, stderr: "", code: 0 };
     };
 
     const routes = [
       { domain: "myapp.example.com", port: 3000, tls: true },
     ] as RouteConfig[];
 
-    const result = await registerRoutes(exec, "myapp", routes);
+    const result = await registerRoutes(exec, "myapp", routes, emptyState());
 
     expect(commands).toHaveLength(2);
+    // First: GET /config/ (no -X flag)
     expect(commands[0]).not.toContain("-X");
-    expect(commands[0]).toContain("routes");
-    expect(commands[1]).toContain("-X PATCH");
+    expect(commands[0]).toContain("/config/");
+    // Second: POST /load
+    expect(commands[1]).toContain("-X POST");
+    expect(commands[1]).toContain("/load");
     expect(commands[1]).toContain("myapp.example.com");
     expect(result).toHaveLength(1);
     expect(result[0].host).toBe("myapp.example.com");
     expect(result[0].service).toBe("default");
     expect(result[0].port).toBe(3000);
-    expect(result[0].caddy_id).toBe("myapp__default");
+    expect(result[0].caddy_id).toBe("myapp__myapp-example-com");
   });
 
-  it("should use PUT when routes array does not exist", async () => {
-    const commands: string[] = [];
-    const exec: ExecFn = async (cmd) => {
-      commands.push(cmd);
-      // GET fails — routes path doesn't exist
-      if (!cmd.includes("-X")) {
-        return { stdout: "", stderr: "not found", code: 1 };
-      }
-      return { stdout: "", stderr: "", code: 0 };
+  it("should include other stacks' routes from state (not from Caddy config)", async () => {
+    const stateWithOtherStack: FleetState = {
+      fleet_root: "/opt/fleet",
+      caddy_bootstrapped: true,
+      stacks: {
+        other: {
+          path: "/opt/fleet/stacks/other",
+          compose_file: "compose.yml",
+          deployed_at: "2025-01-01T00:00:00.000Z",
+          routes: [{ host: "other.example.com", service: "web", port: 4000, caddy_id: "other__web" }],
+        },
+      },
     };
 
-    const routes = [
-      { domain: "myapp.example.com", port: 3000, tls: true },
-    ] as RouteConfig[];
-
-    const result = await registerRoutes(exec, "myapp", routes);
-
-    expect(commands).toHaveLength(2);
-    expect(commands[1]).toContain("-X PUT");
-    expect(commands[1]).toContain("myapp.example.com");
-    expect(result[0].caddy_id).toBe("myapp__default");
-  });
-
-  it("should PATCH preserving other stacks' routes while replacing this stack's", async () => {
-    const existingOtherRoute = { "@id": "other__web", match: [{ host: ["other.example.com"] }], handle: [] };
-    const existingThisRoute = { "@id": "mystack__api", match: [{ host: ["old.example.com"] }], handle: [] };
-
     const commands: string[] = [];
     const exec: ExecFn = async (cmd) => {
       commands.push(cmd);
-      if (!cmd.includes("-X")) {
-        return { stdout: JSON.stringify([existingOtherRoute, existingThisRoute]), stderr: "", code: 0 };
-      }
-      return { stdout: "", stderr: "", code: 0 };
+      return { stdout: cmd.includes("-X") ? "" : fullCaddyConfig, stderr: "", code: 0 };
     };
 
     const routes = [
       { domain: "api.example.com", port: 8080, service: "api", tls: true },
     ] as RouteConfig[];
 
-    const result = await registerRoutes(exec, "mystack", routes);
+    const result = await registerRoutes(exec, "mystack", routes, stateWithOtherStack);
 
-    expect(commands[1]).toContain("-X PATCH");
+    expect(commands[1]).toContain("-X POST");
+    expect(commands[1]).toContain("/load");
+    // New route for this stack
     expect(commands[1]).toContain("api.example.com");
-    expect(commands[1]).toContain("mystack__api");
-    expect(commands[1]).toContain("other__web");
-    expect(commands[1]).not.toContain("old.example.com");
-    expect(result[0].caddy_id).toBe("mystack__api");
+    expect(commands[1]).toContain("mystack__api-example-com");
+    // Other stack's route from state
+    expect(commands[1]).toContain("other__other-example-com");
+    expect(result[0].caddy_id).toBe("mystack__api-example-com");
+  });
+
+  it("should fall back to empty config if GET /config/ fails", async () => {
+    const commands: string[] = [];
+    const exec: ExecFn = async (cmd) => {
+      commands.push(cmd);
+      if (!cmd.includes("-X")) {
+        return { stdout: "", stderr: "connection refused", code: 1 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    const routes = [
+      { domain: "myapp.example.com", port: 3000, tls: true },
+    ] as RouteConfig[];
+
+    const result = await registerRoutes(exec, "myapp", routes, emptyState());
+
+    // Should still attempt /load despite GET failure
+    expect(commands[1]).toContain("-X POST");
+    expect(commands[1]).toContain("/load");
+    expect(commands[1]).toContain("myapp.example.com");
+    expect(result[0].caddy_id).toBe("myapp__myapp-example-com");
   });
 });
 

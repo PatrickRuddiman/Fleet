@@ -19,20 +19,24 @@ function extractJsonPayload(command: string): unknown {
 }
 
 describe("buildCaddyId", () => {
-  it("should join stack name and service name with double underscore", () => {
-    expect(buildCaddyId("myapp", "web")).toBe("myapp__web");
+  it("should join stack name and domain slug with double underscore", () => {
+    expect(buildCaddyId("myapp", "app.example.com")).toBe("myapp__app-example-com");
   });
 
-  it("should handle service names containing a single underscore", () => {
-    expect(buildCaddyId("myapp", "web_server")).toBe("myapp__web_server");
+  it("should produce unique IDs for different domains on the same service", () => {
+    const id1 = buildCaddyId("myapp", "app.example.com");
+    const id2 = buildCaddyId("myapp", "www.example.com");
+    expect(id1).toBe("myapp__app-example-com");
+    expect(id2).toBe("myapp__www-example-com");
+    expect(id1).not.toBe(id2);
   });
 
-  it("should handle numeric-like names", () => {
-    expect(buildCaddyId("app1", "svc2")).toBe("app1__svc2");
+  it("should handle numeric-like stack names", () => {
+    expect(buildCaddyId("app1", "api.example.com")).toBe("app1__api-example-com");
   });
 
-  it("should handle hyphenated names", () => {
-    expect(buildCaddyId("my-app", "my-service")).toBe("my-app__my-service");
+  it("should handle hyphenated stack names", () => {
+    expect(buildCaddyId("my-app", "my-domain.example.com")).toBe("my-app__my-domain-example-com");
   });
 });
 
@@ -140,10 +144,10 @@ describe("buildAddRouteCommand", () => {
     );
   });
 
-  it("should set @id using the double-underscore convention", () => {
+  it("should set @id using stack name and domain slug", () => {
     const result = buildAddRouteCommand(defaultOptions);
     const payload = extractJsonPayload(result) as Record<string, any>;
-    expect(payload["@id"]).toBe("myapp__web");
+    expect(payload["@id"]).toBe("myapp__myapp-example-com");
   });
 
   it("should include host match for the domain", () => {
@@ -179,13 +183,14 @@ describe("buildAddRouteCommand", () => {
     expect(payload.match[0].host[0]).toBe("sub-domain.my-app.example.co.uk");
   });
 
-  it("should handle service names containing a single underscore in @id", () => {
-    const result = buildAddRouteCommand({
-      ...defaultOptions,
-      serviceName: "web_server",
-    });
-    const payload = extractJsonPayload(result) as Record<string, any>;
-    expect(payload["@id"]).toBe("myapp__web_server");
+  it("should produce unique @id for different domains regardless of service name", () => {
+    const result1 = buildAddRouteCommand({ ...defaultOptions, domain: "app.example.com" });
+    const result2 = buildAddRouteCommand({ ...defaultOptions, domain: "www.example.com" });
+    const payload1 = extractJsonPayload(result1) as Record<string, any>;
+    const payload2 = extractJsonPayload(result2) as Record<string, any>;
+    expect(payload1["@id"]).toBe("myapp__app-example-com");
+    expect(payload2["@id"]).toBe("myapp__www-example-com");
+    expect(payload1["@id"]).not.toBe(payload2["@id"]);
   });
 
   it("should handle numeric port values in upstream dial", () => {

@@ -328,9 +328,18 @@ export async function deploy(options: DeployOptions): Promise<void> {
     ];
     await attachNetworks(exec, config.stack.name, uniqueServices);
 
-    // Step 14: Health checks
+    // Step 14: Register Caddy routes
+    console.log("Step 14: Registering routes with Caddy...");
+    const routeStates = await registerRoutes(
+      exec,
+      config.stack.name,
+      config.routes,
+      state
+    );
+
+    // Step 15: Health checks
     if (!options.noHealthCheck) {
-      console.log("Step 14: Running health checks...");
+      console.log("Step 15: Running health checks...");
       for (const route of config.routes) {
         if (route.health_check) {
           const serviceName =
@@ -348,16 +357,8 @@ export async function deploy(options: DeployOptions): Promise<void> {
         }
       }
     } else {
-      console.log("Step 14: Skipping health checks (--no-health-check).");
+      console.log("Step 15: Skipping health checks (--no-health-check).");
     }
-
-    // Step 15: Register Caddy routes
-    console.log("Step 15: Registering routes with Caddy...");
-    const routeStates = await registerRoutes(
-      exec,
-      config.stack.name,
-      config.routes
-    );
 
     // Step 16: Write state
     console.log("Step 16: Writing server state...");

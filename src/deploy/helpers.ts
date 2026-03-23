@@ -10,9 +10,8 @@ import { writeProxyCompose } from "../proxy";
 import {
   buildBootstrapCommand,
   buildRoute,
-  buildReplaceRoutesCommand,
-  buildCreateRoutesCommand,
-  buildListRoutesCommand,
+  buildLoadConfigCommand,
+  buildGetConfigCommand,
   buildCaddyId,
 } from "../caddy";
 import { HostCollision, UploadFileOptions } from "./types";
@@ -369,67 +368,77 @@ export async function checkHealth(
 }
 
 /**
- * Registers all routes for a stack in a single atomic PUT to Caddy, preserving
- * routes from other stacks. This avoids interrupting in-flight TLS challenges
- * that would otherwise be canceled by multiple sequential config reloads.
+ * Registers routes for a stack by loading the full Caddy config, replacing this
+ * stack's routes with the new set, and posting it back via /load. Using /load
+ * makes this idempotent — routes are always derived from Fleet state (source of
+ * truth) rather than from Caddy's current config, and the @id index is rebuilt
+ * from scratch on each load, preventing duplicate-ID errors.
  */
 export async function registerRoutes(
   exec: ExecFn,
   stackName: string,
-  routes: RouteConfig[]
+  routes: RouteConfig[],
+  state: FleetState
 ): Promise<RouteState[]> {
-  // Get current routes from Caddy to preserve routes from other stacks
-  const listResult = await exec(buildListRoutesCommand());
-  let currentRoutes: object[] = [];
-  if (listResult.code === 0 && listResult.stdout.trim()) {
-    try {
-      const parsed = JSON.parse(listResult.stdout);
-      currentRoutes = Array.isArray(parsed) ? parsed : [];
-    } catch {
-      currentRoutes = [];
-    }
-  }
+  // Derive other stacks' routes from state — not from Caddy's current config
+  const otherRoutes: object[] = Object.entries(state.stacks)
+    .filter(([name]) => name !== stackName)
+    .flatMap(([stackN, stack]) =>
+      stack.routes.map((r) =>
+        buildRoute({
+          stackName: stackN,
+          serviceName: r.service,
+          domain: r.host,
+          upstreamHost: `${stackN}-${r.service}-1`,
+          upstreamPort: r.port,
+        })
+      )
+    );
 
-  // Filter out this stack's existing routes (they will be replaced)
-  const stackPrefix = `${stackName}__`;
-  const otherRoutes = currentRoutes.filter(
-    (r: any) => typeof r["@id"] !== "string" || !r["@id"].startsWith(stackPrefix)
-  );
-
-  // Build new route objects and route states for this stack
+  // Build new routes and route states for this stack
   const routeStates: RouteState[] = [];
   const newRoutes: object[] = [];
 
   for (const route of routes) {
     const service = route.service || "default";
-    const caddyId = buildCaddyId(stackName, service);
 
-    newRoutes.push(buildRoute({
-      stackName,
-      serviceName: service,
-      domain: route.domain,
-      upstreamHost: `${stackName}-${service}-1`,
-      upstreamPort: route.port,
-      tls: route.tls,
-      acme_email: route.acme_email,
-    }));
+    newRoutes.push(
+      buildRoute({
+        stackName,
+        serviceName: service,
+        domain: route.domain,
+        upstreamHost: `${stackName}-${service}-1`,
+        upstreamPort: route.port,
+        tls: route.tls,
+        acme_email: route.acme_email,
+      })
+    );
 
-    routeStates.push({
-      host: route.domain,
-      service,
-      port: route.port,
-      caddy_id: caddyId,
-    });
+    routeStates.push({ host: route.domain, service, port: route.port, caddy_id: buildCaddyId(stackName, route.domain) });
   }
 
-  // PATCH replaces an existing routes array; PUT creates it if absent
-  const mergedRoutes = [...otherRoutes, ...newRoutes];
-  const routesCmd = listResult.code === 0
-    ? buildReplaceRoutesCommand(mergedRoutes)
-    : buildCreateRoutesCommand(mergedRoutes);
-  const replaceResult = await exec(routesCmd);
-  if (replaceResult.code !== 0) {
-    throw new Error(`Failed to register routes: ${replaceResult.stderr}`);
+  // GET full Caddy config to preserve TLS and server settings
+  const configResult = await exec(buildGetConfigCommand());
+  let fullConfig: any = {};
+  if (configResult.code === 0 && configResult.stdout.trim()) {
+    try {
+      fullConfig = JSON.parse(configResult.stdout);
+    } catch {
+      fullConfig = {};
+    }
+  }
+
+  // Set routes in the full config (deep-safe path)
+  fullConfig.apps ??= {};
+  fullConfig.apps.http ??= {};
+  fullConfig.apps.http.servers ??= {};
+  fullConfig.apps.http.servers.fleet ??= {};
+  fullConfig.apps.http.servers.fleet.routes = [...otherRoutes, ...newRoutes];
+
+  // POST /load — atomic full replacement, @id index rebuilt from scratch
+  const loadResult = await exec(buildLoadConfigCommand(fullConfig));
+  if (loadResult.code !== 0) {
+    throw new Error(`Failed to register routes: ${loadResult.stderr}`);
   }
 
   return routeStates;
