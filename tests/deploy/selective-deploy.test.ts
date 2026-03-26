@@ -15,12 +15,14 @@ const {
   mockComposeRef,
   capturedCommands,
   mockExecOverrides,
+  mockExecDynamic,
 } = vi.hoisted(() => ({
   mockStateRef: { value: {} as FleetState },
   mockConfigRef: { value: {} as FleetConfig },
   mockComposeRef: { value: {} as ParsedComposeFile },
   capturedCommands: [] as string[],
   mockExecOverrides: { value: {} as Record<string, ExecResult> },
+  mockExecDynamic: { value: null as ((cmd: string) => ExecResult | null) | null },
 }));
 
 // ---------------------------------------------------------------------------
@@ -75,6 +77,11 @@ vi.mock("../../src/ssh", async () => {
     createConnection: async () => ({
       exec: async (cmd: string) => {
         capturedCommands.push(cmd);
+        // Check dynamic per-test handler first (supports stateful/sequenced responses)
+        if (mockExecDynamic.value) {
+          const dynResult = mockExecDynamic.value(cmd);
+          if (dynResult !== null) return dynResult;
+        }
         // Check per-test overrides first
         for (const [pattern, result] of Object.entries(
           mockExecOverrides.value
@@ -129,6 +136,7 @@ describe("selective deploy execution (step 11)", () => {
   beforeEach(() => {
     capturedCommands.length = 0;
     mockExecOverrides.value = {};
+    mockExecDynamic.value = null;
 
     mockConfigRef.value = {
       version: "1" as const,
@@ -557,6 +565,81 @@ describe("selective deploy execution (step 11)", () => {
         "Failed to deploy service web: container start failed"
       )
     );
+  });
+
+  // -----------------------------------------------------------------------
+  // 7. Floating-tag service is promoted to toDeploy after pull brings new image
+  // -----------------------------------------------------------------------
+  it("promotes a floating-tag service to toDeploy when a new image arrives after pull", async () => {
+    vi.spyOn(process, "exit").mockImplementation(
+      (() => {
+        throw new Error("process.exit");
+      }) as never
+    );
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const webService = baseService({ image: "myapp:latest" });
+    mockComposeRef.value = { services: { web: webService } };
+
+    // Stored state: definition hash matches, old image digest recorded
+    mockStateRef.value = {
+      fleet_root: "/opt/fleet",
+      caddy_bootstrapped: true,
+      stacks: {
+        myapp: {
+          path: stackDir,
+          compose_file: "compose.yml",
+          deployed_at: "2025-01-01T00:00:00.000Z",
+          routes: [],
+          services: {
+            web: {
+              definition_hash: computeDefinitionHash(webService),
+              image_digest: "sha256:olddigest1234567",
+              env_hash: "sha256:ccc",
+              deployed_at: "2025-01-01T00:00:00.000Z",
+              one_shot: false,
+              status: "running",
+            },
+          },
+        },
+      },
+    };
+
+    // Stateful exec handler: first docker image inspect returns old digest (pre-pull),
+    // subsequent calls return the new digest (simulating a freshly pulled image).
+    let inspectCount = 0;
+    mockExecDynamic.value = (cmd: string) => {
+      if (cmd.includes("docker image inspect") && cmd.includes("myapp:latest")) {
+        inspectCount++;
+        const digest = inspectCount === 1 ? "olddigest1234567" : "newdigest9876543";
+        return {
+          stdout: `myapp:latest@sha256:${digest}`,
+          stderr: "",
+          code: 0,
+        };
+      }
+      return null;
+    };
+
+    await runDeploy({
+      skipPull: false,
+      noHealthCheck: true,
+      dryRun: false,
+      force: false,
+    });
+
+    // Service should have been deployed (up -d web)
+    const upCmd = capturedCommands.find(
+      (c) => c.includes("up -d web") && c.includes(`docker compose -p ${stackName}`)
+    );
+    expect(upCmd).toBeDefined();
+
+    // A pull should have been issued for the floating-tag service
+    const pullCmd = capturedCommands.find(
+      (c) => c.includes("pull web") && c.includes(`docker compose -p ${stackName}`)
+    );
+    expect(pullCmd).toBeDefined();
   });
 
   // -----------------------------------------------------------------------
