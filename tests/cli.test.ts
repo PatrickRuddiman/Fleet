@@ -6,7 +6,7 @@ describe("CLI", () => {
     const program = createProgram();
 
     expect(program.name()).toBe("fleet");
-    expect(program.version()).toBe("0.1.10");
+    expect(program.version()).toBe("0.1.11");
     expect(program.description()).toBe(
       "A TypeScript CLI tool for managing deployments"
     );
