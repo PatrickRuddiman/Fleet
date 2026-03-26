@@ -18,6 +18,7 @@ import {
   printSummary,
   configHasSecrets,
   pullSelectiveImages,
+  hasFloatingTag,
 } from "./helpers";
 import { classifyServices } from "./classify";
 import type { CandidateHashes, ServiceClassification } from "./classify";
@@ -207,6 +208,29 @@ export async function deploy(options: DeployOptions): Promise<void> {
       );
     } else {
       console.log("Step 11: Skipping image pull (--skip-pull).");
+    }
+
+    // Post-pull re-classification: floating-tag services that were skipped may now
+    // have a different digest after the pull. Promote them to toDeploy if so.
+    if (!options.skipPull && !options.force) {
+      const stillToSkip: string[] = [];
+      for (const name of classification.toSkip) {
+        const service = compose.services[name];
+        if (!service?.image || !hasFloatingTag(service.image)) {
+          stillToSkip.push(name);
+          continue;
+        }
+        const postPullDigest = await getImageDigest(exec, service.image);
+        const storedDigest = existingStackState?.services?.[name]?.image_digest ?? null;
+        if (postPullDigest !== null && storedDigest !== null && postPullDigest !== storedDigest) {
+          classification.toDeploy.push(name);
+          classification.reasons[name] = `image changed (${storedDigest.substring(0, 7)} → ${postPullDigest.substring(0, 7)})`;
+          candidateHashes[name] = { ...candidateHashes[name], imageDigest: postPullDigest };
+        } else {
+          stillToSkip.push(name);
+        }
+      }
+      classification.toSkip = stillToSkip;
     }
 
     // Step 12: Start containers

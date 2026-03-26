@@ -17,7 +17,6 @@ import {
 import { HostCollision, UploadFileOptions } from "./types";
 import type { ServiceClassification } from "./classify";
 import type { StackState } from "../state/types";
-import { getImageDigest } from "./hashes";
 
 /**
  * Converts an ISO timestamp to a human-readable relative time string.
@@ -670,11 +669,6 @@ export async function pullSelectiveImages(
         throw new Error(
           `Failed to pull image for service ${serviceName}: ${result.stderr}`
         );
-      }
-
-      // For floating-tag services, retrieve the post-pull digest
-      if (floating && service.image) {
-        await getImageDigest(exec, service.image);
       }
 
       pulled.push(serviceName);

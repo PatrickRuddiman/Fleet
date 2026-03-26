@@ -228,9 +228,10 @@ describe("pullSelectiveImages", () => {
   });
 
   // -----------------------------------------------------------------------
-  // 8. Floating-tag services trigger getImageDigest call
+  // 8. Floating-tag services do NOT trigger getImageDigest inside pullSelectiveImages
+  //    (post-pull digest comparison is handled by deploy.ts, not pullSelectiveImages)
   // -----------------------------------------------------------------------
-  it("should call getImageDigest for floating-tag services after pulling", async () => {
+  it("should not call getImageDigest for floating-tag services inside pullSelectiveImages", async () => {
     const { exec, commands } = createCapturingExec();
     const compose: ParsedComposeFile = {
       services: {
@@ -242,10 +243,9 @@ describe("pullSelectiveImages", () => {
       exec, compose, stackName, stackDir, [], false
     );
 
-    // pullSelectiveImages calls getImageDigest which runs docker image inspect
+    // pullSelectiveImages should only pull; digest inspection is done in deploy.ts
     const inspectCommands = commands.filter(c => c.includes("docker image inspect"));
-    expect(inspectCommands.length).toBeGreaterThanOrEqual(1);
-    expect(inspectCommands[0]).toContain("nginx:latest");
+    expect(inspectCommands).toHaveLength(0);
   });
 
   // -----------------------------------------------------------------------
