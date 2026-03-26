@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/FleetLogo.png" alt="Fleet Logo" width="200" />
+</p>
+
 # Fleet
 
 Fleet was built to simplify deploying multiple Docker Compose stacks to a single server where all stacks need to share ports 80 and 443. Fleet manages the ingress layer for you — a shared Caddy reverse proxy is automatically bootstrapped and configured so each stack gets its own domain and HTTPS without port conflicts.
