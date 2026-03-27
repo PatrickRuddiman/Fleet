@@ -46,7 +46,7 @@
     "@types/node": "^25.5.0",
     "@yao-pkg/pkg": "^5.15.2",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.2",
     "vitest": "^4.1.0"
   },
   "publishConfig": {
